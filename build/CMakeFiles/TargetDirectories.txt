@@ -1,0 +1,4 @@
+/workspaces/libpcapcie/build/CMakeFiles/pcapcie.dir
+/workspaces/libpcapcie/build/CMakeFiles/sniff_and_send.dir
+/workspaces/libpcapcie/build/CMakeFiles/edit_cache.dir
+/workspaces/libpcapcie/build/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,7 @@
+#include "pcapcie/filter.h"
+
+int pcie_filter_match(const pcie_filter_t *f,
+                      const pcie_tlp_t *t)
+{
+    return (((uint32_t)t->type & f->mask) == f->value);
+}

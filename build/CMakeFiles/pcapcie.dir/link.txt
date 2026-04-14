@@ -1,0 +1,2 @@
+/usr/bin/ar qc libpcapcie.a CMakeFiles/pcapcie.dir/src/pcapcie.c.o CMakeFiles/pcapcie.dir/src/tlp.c.o CMakeFiles/pcapcie.dir/src/filter.c.o CMakeFiles/pcapcie.dir/src/backend_dummy.c.o
+/usr/bin/ranlib libpcapcie.a

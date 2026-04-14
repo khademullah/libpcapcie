@@ -1,0 +1,17 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/pcapcie.dir/src/backend_dummy.c.o"
+  "CMakeFiles/pcapcie.dir/src/backend_dummy.c.o.d"
+  "CMakeFiles/pcapcie.dir/src/filter.c.o"
+  "CMakeFiles/pcapcie.dir/src/filter.c.o.d"
+  "CMakeFiles/pcapcie.dir/src/pcapcie.c.o"
+  "CMakeFiles/pcapcie.dir/src/pcapcie.c.o.d"
+  "CMakeFiles/pcapcie.dir/src/tlp.c.o"
+  "CMakeFiles/pcapcie.dir/src/tlp.c.o.d"
+  "libpcapcie.a"
+  "libpcapcie.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang C)
+  include(CMakeFiles/pcapcie.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()
