@@ -32,4 +32,6 @@ CMakeFiles/pcapcie.dir/src/backend_dummy.c.o: \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
- /usr/include/x86_64-linux-gnu/bits/stdint-least.h
+ /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
+ /workspaces/libpcapcie/include/pcapcie/pcapcie.h \
+ /workspaces/libpcapcie/include/pcapcie/filter.h
