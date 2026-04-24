@@ -8,3 +8,7 @@ typedef struct pcie_backend_ops {
 } pcie_backend_ops_t;
 
 const pcie_backend_ops_t *pcie_backend_dummy(void);
+const pcie_backend_ops_t *pcie_backend_fpga(void);
+const pcie_backend_ops_t *pcie_backend_armds(void);
+const pcie_backend_ops_t *pcie_backend_xgig(void);
+const pcie_backend_ops_t *pcie_backend_pci(void);

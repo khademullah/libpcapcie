@@ -30,3 +30,7 @@ typedef struct {
 pcie_tlp_t pcie_tlp_mem_write(uint64_t addr,
                              uint16_t length,
                              uint8_t *data);
+pcie_tlp_t pcie_tlp_cfg_write(uint32_t addr,
+                             uint16_t length,
+                             uint8_t *data);
+pcie_tlp_t pcie_tlp_cfg_read(uint32_t addr);
