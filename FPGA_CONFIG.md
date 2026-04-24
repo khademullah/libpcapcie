@@ -149,15 +149,3 @@ Once basic TLP send/receive works:
 3. **Add Error Checking**: CRC, sequence numbers
 4. **Performance Optimization**: DMA for large payloads
 5. **Multiple Outstanding TLPs**: Pipeline multiple transactions
-
-## Tell Me Your FPGA Details
-
-To configure this properly, please provide:
-
-1. **BAR Address**: Physical address of your FPGA's PCIe BAR
-2. **BAR Size**: Size of the BAR region
-3. **Register Map**: Offsets and bit fields for your FPGA registers
-4. **TLP Format**: How your FPGA expects TLP data to be formatted
-5. **Status Bits**: Which bits in status registers indicate ready/data available
-
-With this information, I can help you configure the backend perfectly for your FPGA board!
