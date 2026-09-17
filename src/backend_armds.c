@@ -163,6 +163,8 @@ static void arm_ds_close(void) {
 static const pcie_backend_ops_t armds_backend_ops = {
     .send  = arm_ds_send,
     .recv  = arm_ds_recv,
+    .link_status = NULL,
+    .device_info = NULL,
     .close = arm_ds_close
 };
 

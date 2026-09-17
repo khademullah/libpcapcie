@@ -128,6 +128,8 @@ static void xgig_close(void)
 static const pcie_backend_ops_t xgig_ops = {
     .send  = xgig_send,
     .recv  = xgig_recv,
+    .link_status = NULL,
+    .device_info = NULL,
     .close = xgig_close
 };
 

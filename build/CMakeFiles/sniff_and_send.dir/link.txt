@@ -1,1 +1,1 @@
-/usr/bin/cc CMakeFiles/sniff_and_send.dir/examples/sniff_and_send.c.o -o sniff_and_send  libpcapcie.a 
+/usr/bin/cc -Wl,--dependency-file=CMakeFiles/sniff_and_send.dir/link.d CMakeFiles/sniff_and_send.dir/examples/sniff_and_send.c.o -o sniff_and_send  libpcapcie.a

@@ -1,6 +1,10 @@
 #pragma once
 #include "tlp.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
     uint32_t mask;
     uint32_t value;
@@ -11,3 +15,7 @@ typedef struct {
 
 int pcie_filter_match(const pcie_filter_t *f,
                       const pcie_tlp_t *t);
+
+#ifdef __cplusplus
+}
+#endif

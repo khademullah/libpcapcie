@@ -197,6 +197,8 @@ const pcie_backend_ops_t *pcie_backend_fpga(void) {
     return &(pcie_backend_ops_t){
         .send  = fpga_send,
         .recv  = fpga_recv,
+        .link_status = NULL,
+        .device_info = NULL,
         .close = fpga_close
     };
 }

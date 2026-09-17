@@ -5,14 +5,17 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <backend>\n", argv[0]);
+    const char *backend = argc > 1 ? argv[1] : "pci";
+    const char *trace_path = argc > 2 ? argv[2] : NULL;
+    const char *trace_format = argc > 3 ? argv[3] : "csv";
+
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <backend> [trace_file] [format]\n", argv[0]);
         fprintf(stderr, "Backends: dummy, fpga, armds, xgig, pci\n");
-        fprintf(stderr, "Example: %s pci\n", argv[0]);
+        fprintf(stderr, "Example: %s pci /tmp/pcie_trace.csv csv\n", argv[0]);
         return 1;
     }
 
-    const char *backend = argv[1];
     printf("Testing PCIe TLP with backend: %s\n", backend);
 
     pcie_ctx_t *ctx = pcie_open(backend);
@@ -67,6 +70,25 @@ int main(int argc, char *argv[])
         printf("Sending enumeration CfgRd TLP: addr=0x%lx\n", enum_addrs[i]);
         result = pcie_send(ctx, &enum_rd);
         printf("  Result: %d\n", result);
+    }
+
+    if (trace_path) {
+        int rc = 0;
+        if (strcmp(trace_format, "pcap") == 0) {
+            rc = pcie_trace_write_pcap(ctx, trace_path);
+        } else {
+            rc = pcie_trace_write_csv(ctx, trace_path);
+        }
+
+        if (rc != 0) {
+            fprintf(stderr, "Failed to write PCIe trace to %s (%s format)\n",
+                    trace_path,
+                    trace_format);
+            pcie_close(ctx);
+            return 3;
+        }
+
+        printf("PCIe trace written to %s (%s format)\n", trace_path, trace_format);
     }
 
     pcie_close(ctx);

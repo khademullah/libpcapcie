@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/sniff_and_send.dir/link.d"
   "CMakeFiles/sniff_and_send.dir/examples/sniff_and_send.c.o"
   "CMakeFiles/sniff_and_send.dir/examples/sniff_and_send.c.o.d"
   "sniff_and_send"
