@@ -865,6 +865,49 @@ void MainWindow::showPacketDetails()
     addField("Payload length", QString::number(payload.isEmpty() ? 0 : payload.size()));
     addField("Payload", payload.isEmpty() ? "<none>" : payload);
 
+    if ((typeText == "CfgRd" || typeText == "CfgWr") && !payload.isEmpty()) {
+        QString normalizedPayload = payload;
+        normalizedPayload.remove(' ');
+        normalizedPayload.remove('\t');
+        normalizedPayload.remove('\n');
+        normalizedPayload.remove('\r');
+
+        const QByteArray rawBytes = QByteArray::fromHex(normalizedPayload.toLatin1());
+        if (rawBytes.size() >= 4) {
+            uint32_t regValue = 0;
+            for (int i = 0; i < 4 && i < rawBytes.size(); ++i) {
+                regValue |= static_cast<uint32_t>(static_cast<unsigned char>(rawBytes.at(i))) << (8 * i);
+            }
+
+            auto *pciRoot = new QTreeWidgetItem(decodeTree, {"PCI config decode", ""});
+            const uint64_t regAddr = addrValue;
+
+            switch (static_cast<int>(regAddr)) {
+                case 0x00:
+                    new QTreeWidgetItem(pciRoot, {"Vendor ID", QString("0x%1").arg(static_cast<uint16_t>(regValue & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Device ID", QString("0x%1").arg(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    break;
+                case 0x04:
+                    new QTreeWidgetItem(pciRoot, {"Command", QString("0x%1").arg(static_cast<uint16_t>(regValue & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Status", QString("0x%1").arg(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    break;
+                case 0x08:
+                    new QTreeWidgetItem(pciRoot, {"Revision ID", QString("0x%1").arg(static_cast<uint8_t>(regValue & 0xFF), 2, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Class code", QString("0x%1").arg(static_cast<uint32_t>((regValue >> 8) & 0xFFFFFF), 6, 16, QLatin1Char('0')).toUpper()});
+                    break;
+                case 0x10:
+                case 0x14:
+                case 0x18:
+                case 0x1C:
+                    new QTreeWidgetItem(pciRoot, {"BAR", QString("0x%1").arg(regValue, 8, 16, QLatin1Char('0')).toUpper()});
+                    break;
+                default:
+                    new QTreeWidgetItem(pciRoot, {"Raw register", QString("0x%1").arg(regValue, 8, 16, QLatin1Char('0')).toUpper()});
+                    break;
+            }
+        }
+    }
+
     auto *specRoot = new QTreeWidgetItem(decodeTree, {"Spec structure", ""});
     new QTreeWidgetItem(specRoot, {"type", typeName});
     new QTreeWidgetItem(specRoot, {"requester_id", QString::number(decoded.requester_id)});

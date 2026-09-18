@@ -9,8 +9,6 @@ int main(int argc, char **argv)
 
     if (argc > 1) {
         window.loadTraceFile(QString::fromLocal8Bit(argv[1]));
-    } else {
-        window.openTraceDialog();
     }
 
     window.show();
