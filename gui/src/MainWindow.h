@@ -45,6 +45,7 @@ private slots:
     void applyFilter();
     void showPacketDetails();
     void updateSummaryStats();
+    void updateAiPerformanceReadout();
 
 private:
     void loadCsv(const QString &path);
@@ -71,11 +72,15 @@ private:
     QLabel *txLabel;
     QLabel *rxLabel;
     QLabel *filteredLabel;
+    QLabel *aiPerformanceReadout;
     QDialog *aiEmulatorDialog;
+    QDialog *pcieLsDialog;
     QTimer *liveTraceTimer;
     QProcess *liveTraceProcess;
     QString liveTracePath;
     QSet<QString> liveTraceSeen;
+    int currentAiPerformanceTargetTps = 0;
+    int currentAiPerformanceTargetLatencyNs = 0;
     bool darkMode;
     bool suppressAiRunnerExitWarning;
     void applyTheme();
@@ -90,4 +95,5 @@ private:
                                  int jitterNs,
                                  double dropRate,
                                  int busCount);
+    void showPcieLsWindow(const QString &path);
 };

@@ -239,6 +239,31 @@ QString makeHexLabel(uint32_t value, int width)
     return QString("0x%1").arg(value, width, 16, QLatin1Char('0')).toUpper();
 }
 
+QStringList extractPcieLsEntries(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+
+    QStringList entries;
+    QTextStream stream(&file);
+    while (!stream.atEnd()) {
+        const QString line = stream.readLine().trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+
+        static const QRegularExpression pcieLsRe(
+            QStringLiteral(R"(^\d+:\d+\.\d+\s+ID\s+[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}\b.*$)"));
+
+        if (pcieLsRe.match(line).hasMatch()) {
+            entries << line;
+        }
+    }
+    return entries;
+}
+
 QString buildAiTopologyHtml()
 {
     return QString(
@@ -355,6 +380,7 @@ QString buildAiTopologyHtml()
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , aiEmulatorDialog(nullptr)
+    , pcieLsDialog(nullptr)
     , liveTraceTimer(nullptr)
     , liveTraceProcess(nullptr)
     , suppressAiRunnerExitWarning(false)
@@ -836,6 +862,35 @@ void MainWindow::openTrace()
     openTraceDialog();
 }
 
+void MainWindow::showPcieLsWindow(const QString &path)
+{
+    if (pcieLsDialog) {
+        pcieLsDialog->close();
+        pcieLsDialog->deleteLater();
+        pcieLsDialog = nullptr;
+    }
+
+    pcieLsDialog = new QDialog(this);
+    pcieLsDialog->setWindowTitle("Zephyr PCIe ls");
+    pcieLsDialog->resize(900, 500);
+    pcieLsDialog->setAttribute(Qt::WA_DeleteOnClose, true);
+
+    QTextBrowser *browser = new QTextBrowser(pcieLsDialog);
+    browser->setReadOnly(true);
+
+    const QStringList entries = extractPcieLsEntries(path);
+    browser->setPlainText(entries.isEmpty()
+                              ? QString("No pcie ls output found.\n\nFile: %1").arg(path)
+                              : entries.join("\n"));
+
+    QVBoxLayout *layout = new QVBoxLayout(pcieLsDialog);
+    layout->addWidget(browser);
+
+    pcieLsDialog->show();
+    pcieLsDialog->raise();
+    pcieLsDialog->activateWindow();
+}
+
 void MainWindow::pollLiveTrace()
 {
     if (liveTracePath.isEmpty()) {
@@ -884,11 +939,13 @@ void MainWindow::pollLiveTrace()
             tableView->selectRow(model->rowCount() - 1);
         }
         updateSummaryStats();
+        updateAiPerformanceReadout();
         statusLabel->setText(QString("Live trace: %1 entries").arg(model->rowCount()));
     }
 
     if (liveTraceProcess && liveTraceProcess->state() == QProcess::NotRunning) {
         liveTraceTimer->stop();
+        updateAiPerformanceReadout();
         statusLabel->setText(QString("Loaded %1 live trace entries from %2").arg(model->rowCount()).arg(liveTracePath));
         liveTraceProcess = nullptr;
     }
@@ -1009,6 +1066,7 @@ bool parseRawTraceLine(const QString &line,
     *payload = value;
     return true;
 }
+
 }
 
 void MainWindow::loadCsv(const QString &path)
@@ -1255,6 +1313,8 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
 
     const QString workDir = QFileInfo(resolvedScript).absolutePath() + "/..";
     const QString traceLog = QDir(workDir).filePath("zephyr_ai_topology_trace.log");
+    currentAiPerformanceTargetTps = tps;
+    currentAiPerformanceTargetLatencyNs = latencyNs;
     liveTraceSeen.clear();
     liveTracePath = traceLog;
 
@@ -1319,6 +1379,7 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
                     const double observedLatencyUs = latencyNs / 1000.0;
                     const double observedUtilization = (tps > 0) ? std::min(100.0, (observedTps / tps) * 100.0) : 0.0;
 
+                    updateAiPerformanceReadout();
                     statusLabel->setText(QString("AI performance summary: profile=%1 | packets=%2 | throughput=%3 ops/s | latency=%4 us | util=%5%")
                         .arg(profile)
                         .arg(totalEntries)
@@ -1360,6 +1421,7 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
                 }
             });
 
+    updateAiPerformanceReadout();
     liveTraceProcess->start();
     if (!liveTraceProcess->waitForStarted()) {
         QMessageBox::warning(this, "AI performance measurement failed",
@@ -1384,6 +1446,9 @@ void MainWindow::openAiPerfDialog()
         aiEmulatorDialog->setModal(false);
 
         QVBoxLayout *mainLayout = new QVBoxLayout(aiEmulatorDialog);
+
+        aiPerformanceReadout = new QLabel("Live performance: waiting for trace...", aiEmulatorDialog);
+        aiPerformanceReadout->setStyleSheet("QLabel { font-weight: 600; color: #1f2937; } ");
 
         QTextBrowser *topologyView = new QTextBrowser(aiEmulatorDialog);
         topologyView->setHtml(buildAiTopologyHtml());
@@ -1441,13 +1506,16 @@ void MainWindow::openAiPerfDialog()
 
         QPushButton *enumerateButton = new QPushButton("Enumerate complete flow", aiEmulatorDialog);
         QPushButton *measureButton = new QPushButton("Measure performance", aiEmulatorDialog);
+        QPushButton *pcieLsButton = new QPushButton("Show pcie ls", aiEmulatorDialog);
         auto *actionButtons = new QDialogButtonBox(Qt::Horizontal, aiEmulatorDialog);
         actionButtons->addButton(enumerateButton, QDialogButtonBox::ActionRole);
         actionButtons->addButton(measureButton, QDialogButtonBox::ActionRole);
+        actionButtons->addButton(pcieLsButton, QDialogButtonBox::ActionRole);
         auto *closeButton = new QPushButton("Close", aiEmulatorDialog);
         actionButtons->addButton(closeButton, QDialogButtonBox::ActionRole);
 
         mainLayout->addWidget(topologyView);
+        mainLayout->addWidget(aiPerformanceReadout);
         mainLayout->addLayout(form);
         mainLayout->addWidget(actionButtons);
 
@@ -1580,6 +1648,55 @@ void MainWindow::openAiPerfDialog()
                                      dropRate->value(),
                                      buses->value());
         });
+        connect(pcieLsButton, &QPushButton::clicked, this, [this]() {
+            const QStringList candidateScripts = {
+                QDir::cleanPath(QDir::currentPath() + "/scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../../scripts/run_zephyr_ai_topology.sh")
+            };
+
+            QString resolvedScript;
+            for (const QString &candidate : candidateScripts) {
+                if (QFileInfo::exists(candidate)) {
+                    resolvedScript = candidate;
+                    break;
+                }
+            }
+
+            if (resolvedScript.isEmpty()) {
+                QMessageBox::warning(this, "Zephyr runner missing",
+                                     "Unable to locate scripts/run_zephyr_ai_topology.sh.");
+                return;
+            }
+
+            const QString workingDir = QFileInfo(resolvedScript).absolutePath() + "/..";
+            const QString pcieLsLog = QDir(workingDir).filePath("zephyr_pcie_ls.log");
+            if (QFileInfo::exists(pcieLsLog)) {
+                showPcieLsWindow(pcieLsLog);
+                return;
+            }
+
+            QProcess *proc = new QProcess(this);
+            proc->setWorkingDirectory(workingDir);
+            proc->setProgram("bash");
+            proc->setArguments({"-lc", QString("PCIE_LS_CAPTURE=1 PCIE_LS_LOG='%1' RUN_TIMEOUT_SECONDS=15 '%2'")
+                                      .arg(pcieLsLog)
+                                      .arg(resolvedScript)});
+            connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    this, [this, pcieLsLog](int exitCode, QProcess::ExitStatus status) {
+                        if (status == QProcess::CrashExit || exitCode != 0) {
+                            QMessageBox::warning(this, "pcie ls failed",
+                                                 "The Zephyr guest did not return valid pcie ls output.");
+                            return;
+                        }
+                        if (QFileInfo::exists(pcieLsLog)) {
+                            showPcieLsWindow(pcieLsLog);
+                        }
+                    });
+            proc->start();
+            statusLabel->setText("Capturing guest pcie ls output in a separate log...");
+        });
         connect(closeButton, &QPushButton::clicked, aiEmulatorDialog, &QDialog::close);
         connect(aiEmulatorDialog, &QDialog::finished, this, [this]() {
             aiEmulatorDialog = nullptr;
@@ -1625,6 +1742,31 @@ void MainWindow::applyFilter()
     colorRows();
     showPacketDetails();
     updateSummaryStats();
+}
+
+void MainWindow::updateAiPerformanceReadout()
+{
+    if (!aiPerformanceReadout || !model) {
+        return;
+    }
+
+    int totalEntries = 0;
+    int txCount = 0;
+    int rxCount = 0;
+    double firstTs = 0.0;
+    double lastTs = 0.0;
+    summarizeModelRows(model, &totalEntries, &txCount, &rxCount, &firstTs, &lastTs);
+
+    const double durationSec = (lastTs > firstTs) ? ((lastTs - firstTs) / 1000.0) : 1.0;
+    const double observedTps = (durationSec > 0.0) ? (totalEntries / durationSec) : 0.0;
+    const double observedLatencyUs = (currentAiPerformanceTargetLatencyNs > 0) ? (currentAiPerformanceTargetLatencyNs / 1000.0) : 0.0;
+    const double utilization = (currentAiPerformanceTargetTps > 0) ? std::min(100.0, (observedTps / currentAiPerformanceTargetTps) * 100.0) : 0.0;
+
+    aiPerformanceReadout->setText(QString("Live performance: %1 entries | throughput=%2 ops/s | latency=%3 us | util=%4%")
+        .arg(totalEntries)
+        .arg(observedTps, 0, 'f', 2)
+        .arg(observedLatencyUs, 0, 'f', 2)
+        .arg(utilization, 0, 'f', 1));
 }
 
 void MainWindow::updateSummaryStats()
