@@ -6,6 +6,9 @@ ZEPHYR_BASE="${ZEPHYR_BASE:-$HOME/zephyrproject/zephyr}"
 ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK_INSTALL_DIR:-/home/khadem/zephyr-sdk-1.0.1}"
 QEMU_BIN="${QEMU_BIN:-$ZEPHYR_SDK_INSTALL_DIR/hosttools/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-aarch64}"
 TRACE_LOG="${TRACE_LOG:-${PWD}/zephyr_ai_topology_trace.log}"
+PCIE_LS_LOG="${PCIE_LS_LOG:-${PWD}/zephyr_pcie_ls.log}"
+PCIE_LS_CAPTURE="${PCIE_LS_CAPTURE:-0}"
+QEMU_CONSOLE_PORT="${QEMU_CONSOLE_PORT:-4444}"
 RUN_TIMEOUT_SECONDS="${RUN_TIMEOUT_SECONDS:-0}"
 
 # Prefer a user-supplied path, then common local Zephyr build locations, then the
@@ -73,6 +76,25 @@ printf 'Using ZEPHYR_SDK_INSTALL_DIR=%s\n' "$ZEPHYR_SDK_INSTALL_DIR"
 printf 'Using QEMU=%s\n' "$QEMU_BIN"
 printf 'Using KERNEL=%s\n' "$KERNEL_PATH"
 printf 'Trace log: %s\n' "$TRACE_LOG"
+printf 'pcie ls log: %s\n' "$PCIE_LS_LOG"
+printf 'pcie ls capture: %s\n' "$PCIE_LS_CAPTURE"
+printf 'console port: %s\n' "$QEMU_CONSOLE_PORT"
+
+cleanup_stale_qemu_lock() {
+    local pidfile="${PWD}/qemu.pid"
+    if [[ -f "$pidfile" ]]; then
+        local stale_pid
+        stale_pid="$(cat "$pidfile" 2>/dev/null || true)"
+        if [[ -n "$stale_pid" ]] && kill -0 "$stale_pid" 2>/dev/null; then
+            kill -TERM "$stale_pid" 2>/dev/null || true
+            sleep 1
+            if kill -0 "$stale_pid" 2>/dev/null; then
+                kill -KILL "$stale_pid" 2>/dev/null || true
+            fi
+        fi
+        rm -f "$pidfile"
+    fi
+}
 
 cleanup() {
     if [[ -n "${QEMU_PID:-}" ]] && kill -0 "$QEMU_PID" 2>/dev/null; then
@@ -83,47 +105,103 @@ cleanup() {
         fi
         wait "$QEMU_PID" 2>/dev/null || true
     fi
+    rm -f "${PWD}/qemu.pid"
 }
 trap cleanup EXIT
+cleanup_stale_qemu_lock
 
-"$QEMU_BIN" \
-  -cpu cortex-a53 \
-  -machine virt,secure=on,gic-version=3 \
-  -pidfile qemu.pid \
-  -chardev stdio,id=con,mux=on \
-  -serial chardev:con \
-  -mon chardev=con,mode=readline \
-  -display none \
-  -rtc clock=vm \
-  -net none \
-  -netdev user,id=net1 -netdev user,id=net2 \
-  -device pcie-root-port,id=rp1,bus=pcie.0,chassis=1,slot=1,addr=01.0,multifunction=on \
-  -device pcie-root-port,id=rp2,bus=pcie.0,chassis=2,slot=1,addr=01.1 \
-  -device pcie-root-port,id=rp3,bus=pcie.0,chassis=3,slot=1,addr=01.2 \
-  -device pcie-root-port,id=rp4,bus=pcie.0,chassis=4,slot=1,addr=01.3 \
-  -device x3130-upstream,id=switch0_up,bus=rp1,addr=00.0 \
-  -device xio3130-downstream,id=switch0_dp0,bus=switch0_up,chassis=11,slot=0,addr=00.0,multifunction=on \
-  -device xio3130-downstream,id=switch0_dp1,bus=switch0_up,chassis=12,slot=1,addr=00.1 \
-  -device nvme,id=gpu1,bus=switch0_dp0,addr=00.0,serial=AI_ACCEL_01 \
-  -device nvme,id=gpu2,bus=switch0_dp1,addr=00.0,serial=AI_ACCEL_02 \
-  -device x3130-upstream,id=switch1_up,bus=rp2,addr=00.0 \
-  -device xio3130-downstream,id=switch1_dp0,bus=switch1_up,chassis=21,slot=0,addr=00.0,multifunction=on \
-  -device xio3130-downstream,id=switch1_dp1,bus=switch1_up,chassis=22,slot=1,addr=00.1 \
-  -device nvme,id=gpu3,bus=switch1_dp0,addr=00.0,serial=AI_ACCEL_03 \
-  -device nvme,id=gpu4,bus=switch1_dp1,addr=00.0,serial=AI_ACCEL_04 \
-  -device x3130-upstream,id=switch2_up,bus=rp3,addr=00.0 \
-  -device xio3130-downstream,id=switch2_dp0,bus=switch2_up,chassis=31,slot=0,addr=00.0,multifunction=on \
-  -device xio3130-downstream,id=switch2_dp1,bus=switch2_up,chassis=32,slot=1,addr=00.1 \
-  -device nvme,id=nvme1,bus=switch2_dp0,addr=00.0,serial=DATA_POOL_01 \
-  -device nvme,id=nvme2,bus=switch2_dp1,addr=00.0,serial=DATA_POOL_02 \
-  -device x3130-upstream,id=switch3_up,bus=rp4,addr=00.0 \
-  -device xio3130-downstream,id=switch3_dp0,bus=switch3_up,chassis=41,slot=0,addr=00.0,multifunction=on \
-  -device xio3130-downstream,id=switch3_dp1,bus=switch3_up,chassis=42,slot=1,addr=00.1 \
-  -device e1000e,netdev=net1,bus=switch3_dp0,addr=00.0 \
-  -device e1000e,netdev=net2,bus=switch3_dp1,addr=00.0 \
-  -kernel "$KERNEL_PATH" \
-  -trace pci_cfg_* 2>&1 | tee "$TRACE_LOG" &
+QEMU_ARGS=(
+  -cpu cortex-a53
+  -machine virt,secure=on,gic-version=3
+  -pidfile qemu.pid
+)
+
+if [[ "$PCIE_LS_CAPTURE" == "1" ]]; then
+  QEMU_ARGS+=(
+    -chardev socket,host=127.0.0.1,port=4444,server=on,wait=off,telnet=on,id=console
+    -serial chardev:console
+    -monitor none
+  )
+else
+  QEMU_ARGS+=(
+    -chardev stdio,id=con,mux=on
+    -serial chardev:con
+    -mon chardev=con,mode=readline
+  )
+fi
+
+QEMU_ARGS+=(
+  -display none
+  -rtc clock=vm
+  -net none
+  -netdev user,id=net1 -netdev user,id=net2
+  -device pcie-root-port,id=rp1,bus=pcie.0,chassis=1,slot=1,addr=01.0,multifunction=on
+  -device pcie-root-port,id=rp2,bus=pcie.0,chassis=2,slot=1,addr=01.1
+  -device pcie-root-port,id=rp3,bus=pcie.0,chassis=3,slot=1,addr=01.2
+  -device pcie-root-port,id=rp4,bus=pcie.0,chassis=4,slot=1,addr=01.3
+  -device x3130-upstream,id=switch0_up,bus=rp1,addr=00.0
+  -device xio3130-downstream,id=switch0_dp0,bus=switch0_up,chassis=11,slot=0,addr=00.0,multifunction=on
+  -device xio3130-downstream,id=switch0_dp1,bus=switch0_up,chassis=12,slot=1,addr=00.1
+  -device nvme,id=gpu1,bus=switch0_dp0,addr=00.0,serial=AI_ACCEL_01
+  -device nvme,id=gpu2,bus=switch0_dp1,addr=00.0,serial=AI_ACCEL_02
+  -device x3130-upstream,id=switch1_up,bus=rp2,addr=00.0
+  -device xio3130-downstream,id=switch1_dp0,bus=switch1_up,chassis=21,slot=0,addr=00.0,multifunction=on
+  -device xio3130-downstream,id=switch1_dp1,bus=switch1_up,chassis=22,slot=1,addr=00.1
+  -device nvme,id=gpu3,bus=switch1_dp0,addr=00.0,serial=AI_ACCEL_03
+  -device nvme,id=gpu4,bus=switch1_dp1,addr=00.0,serial=AI_ACCEL_04
+  -device x3130-upstream,id=switch2_up,bus=rp3,addr=00.0
+  -device xio3130-downstream,id=switch2_dp0,bus=switch2_up,chassis=31,slot=0,addr=00.0,multifunction=on
+  -device xio3130-downstream,id=switch2_dp1,bus=switch2_up,chassis=32,slot=1,addr=00.1
+  -device nvme,id=nvme1,bus=switch2_dp0,addr=00.0,serial=DATA_POOL_01
+  -device nvme,id=nvme2,bus=switch2_dp1,addr=00.0,serial=DATA_POOL_02
+  -device x3130-upstream,id=switch3_up,bus=rp4,addr=00.0
+  -device xio3130-downstream,id=switch3_dp0,bus=switch3_up,chassis=41,slot=0,addr=00.0,multifunction=on
+  -device xio3130-downstream,id=switch3_dp1,bus=switch3_up,chassis=42,slot=1,addr=00.1
+  -device e1000e,netdev=net1,bus=switch3_dp0,addr=00.0
+  -device e1000e,netdev=net2,bus=switch3_dp1,addr=00.0
+  -kernel "$KERNEL_PATH"
+)
+
+if [[ "$PCIE_LS_CAPTURE" == "1" ]]; then
+  "${QEMU_BIN}" "${QEMU_ARGS[@]}" > /tmp/zephyr_ai_qemu_stdout.log 2>&1 &
+else
+  "${QEMU_BIN}" "${QEMU_ARGS[@]}" -trace pci_cfg_* 2>&1 | tee "$TRACE_LOG" &
+fi
 QEMU_PID=$!
+
+if [[ "$PCIE_LS_CAPTURE" == "1" ]]; then
+  python3 - "$QEMU_CONSOLE_PORT" "$PCIE_LS_LOG" <<'PY'
+import socket
+import sys
+import time
+
+port = int(sys.argv[1])
+log_path = sys.argv[2]
+
+chunks = []
+for _ in range(60):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1.0) as sock:
+            sock.settimeout(1.0)
+            time.sleep(1)
+            sock.sendall(b"pcie ls\n")
+            end = time.time() + 10
+            while time.time() < end:
+                try:
+                    data = sock.recv(4096)
+                    if not data:
+                        break
+                    chunks.append(data.decode("utf-8", errors="replace"))
+                except socket.timeout:
+                    break
+            break
+    except OSError:
+        time.sleep(0.5)
+
+with open(log_path, "w", encoding="utf-8", errors="replace") as fh:
+    fh.write("".join(chunks))
+PY
+fi
 
 if [[ "$RUN_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && (( RUN_TIMEOUT_SECONDS > 0 )); then
     echo "Running Zephyr topology for ${RUN_TIMEOUT_SECONDS}s..."
