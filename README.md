@@ -179,6 +179,20 @@ if (pcie_check_link_target(ctx, PCIE_GEN_5, 1, &pass) == 0 && pass) {
 
 This is the next layer toward automation of PCIe Gen 5–8 validation workflows.
 
+## Golden AI topology reference
+
+The GUI now defaults to a fixed AI PCIe topology that follows the Zephyr/QEMU
+reference layout used for accelerated AI and data-centre emulation:
+
+- 4 root ports: `rp1` to `rp4`
+- 4 upstream switches: `switch0_up` to `switch3_up`
+- 2 downstream ports per switch: `dp0` and `dp1`
+- endpoints including `GPU 1..4`, `NVMe 1..2`, and `SmartNIC` devices
+- the CPU complex attached to a single PCIe Bus 00 root domain
+
+This is the default “golden” pattern for AI benchmarking in the GUI, and it is
+used as the canonical baseline before introducing custom tuning later.
+
 ## Innovative workflow: deterministic dummy profiles
 
 The `dummy` backend is intentionally more than a stub. It can emulate named PCIe

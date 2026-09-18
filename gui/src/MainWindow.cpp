@@ -107,25 +107,25 @@ QString buildAiTopologyHtml()
         "<html><body style='background:#0f1117;color:#e7ebf3;font-family:monospace;'>"
         "<div style='padding:8px;'>"
         "<div style='text-align:center;font-weight:bold;font-size:18px;padding:8px;'>[ CPU Complex ]</div>"
-        "<div style='text-align:center;font-size:14px;padding-bottom:8px;'>PCIe Bus 00</div>"
-        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<div style='text-align:center;font-size:14px;padding-bottom:10px;'>[ PCIe Bus 00 ]</div>"
+        "<table width='100%' style='border-spacing:10px 8px;'>"
         "<tr>"
-        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:9px;width:24%;'>"
         "<div style='font-weight:bold;'>[ rp1 ]</div>"
         "<div style='font-size:12px;opacity:0.9;'>(01.0, Bus 01)</div>"
         "<div>Compute Hub 1</div>"
         "</td>"
-        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:9px;width:24%;'>"
         "<div style='font-weight:bold;'>[ rp2 ]</div>"
         "<div style='font-size:12px;opacity:0.9;'>(01.1, Bus 07)</div>"
         "<div>Compute Hub 2</div>"
         "</td>"
-        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:9px;width:24%;'>"
         "<div style='font-weight:bold;'>[ rp3 ]</div>"
         "<div style='font-size:12px;opacity:0.9;'>(01.2, Bus 13)</div>"
         "<div>Storage Array 1</div>"
         "</td>"
-        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:9px;width:24%;'>"
         "<div style='font-weight:bold;'>[ rp4 ]</div>"
         "<div style='font-size:12px;opacity:0.9;'>(01.3, Bus 19)</div>"
         "<div>Storage Array 2</div>"
@@ -133,7 +133,7 @@ QString buildAiTopologyHtml()
         "</tr>"
         "</table>"
         "<div style='border-top:2px solid #dfe5ee; margin:10px 0;'></div>"
-        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<table width='100%' style='border-spacing:10px 8px;'>"
         "<tr>"
         "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:24%;'>"
         "<div style='font-weight:bold;'>[switch0_up]</div>"
@@ -153,19 +153,19 @@ QString buildAiTopologyHtml()
         "</td>"
         "</tr>"
         "</table>"
-        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<table width='100%' style='border-spacing:10px 6px;'>"
         "<tr>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw0 dp0]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw0 dp1]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw1 dp0]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw1 dp1]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw2 dp0]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw2 dp1]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw3 dp0]</td>"
-        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw3 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw0 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw0 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw1 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw1 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw2 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw2 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw3 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:6px;width:12%;'>[sw3 dp1]</td>"
         "</tr>"
         "</table>"
-        "<table width='100%' style='border-spacing:14px 8px;'>"
+        "<table width='100%' style='border-spacing:10px 6px;'>"
         "<tr>"
         "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
         "<div style='font-weight:bold;'>[ GPU 1 ]</div>"
@@ -984,11 +984,11 @@ void MainWindow::openAiPerfDialog()
 
     QFormLayout *form = new QFormLayout();
     QComboBox *preset = new QComboBox(&dialog);
-    preset->addItem("AI cluster baseline");
+    preset->addItem("AI golden topology");
     preset->addItem("Low latency mesh");
     preset->addItem("High throughput fabric");
     preset->addItem("Custom");
-    preset->setCurrentText("AI cluster baseline");
+    preset->setCurrentText("AI golden topology");
 
     QSpinBox *rootPorts = new QSpinBox(&dialog);
     rootPorts->setRange(1, 16);
@@ -1048,11 +1048,11 @@ void MainWindow::openAiPerfDialog()
                 rootPorts->setValue(4);
                 endpointPerRoot->setValue(2);
                 buses->setValue(4);
-                iterations->setValue(10);
-                latencyNs->setValue(250);
-                tps->setValue(250000);
-                burstSize->setValue(16);
-                jitterNs->setValue(50);
+                iterations->setValue(20);
+                latencyNs->setValue(80);
+                tps->setValue(500000);
+                burstSize->setValue(32);
+                jitterNs->setValue(25);
                 dropRate->setValue(0.0);
                 break;
             case 1:
@@ -1084,7 +1084,7 @@ void MainWindow::openAiPerfDialog()
     connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), applyPreset);
     connect(enumerateButton, &QPushButton::clicked, [&]() {
         QString profile = "gen8x16";
-        if (preset->currentText() == "AI cluster baseline") profile = "gen8x16";
+        if (preset->currentText() == "AI golden topology") profile = "gen8x16";
         else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
         else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
 
@@ -1098,14 +1098,14 @@ void MainWindow::openAiPerfDialog()
                                  jitterNs->value(),
                                  dropRate->value(),
                                  buses->value());
-        statusLabel->setText(QString("AI emulator enumerated: %1 root ports | %2 endpoints/root | %3 buses")
+        statusLabel->setText(QString("AI golden topology enumerated: %1 root ports | %2 endpoints/root | %3 buses")
             .arg(rootPorts->value())
             .arg(endpointPerRoot->value())
             .arg(buses->value()));
     });
     connect(measureButton, &QPushButton::clicked, [&]() {
         QString profile = "gen8x16";
-        if (preset->currentText() == "AI cluster baseline") profile = "gen8x16";
+        if (preset->currentText() == "AI golden topology") profile = "gen8x16";
         else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
         else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
 
