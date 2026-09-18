@@ -269,6 +269,11 @@ void MainWindow::applyTheme()
             QTableView::item {
                 padding: 4px 6px;
                 border: 0px;
+                background: #0b1220;
+                color: #e2e8f0;
+            }
+            QTableView::item:alternate {
+                background: #111827;
             }
             QTableView::item:selected {
                 background: #1d4ed8;
@@ -383,6 +388,20 @@ void MainWindow::applyTheme()
                 selection-background-color: #dfeaff;
                 selection-color: #1f2328;
                 font-size: 12px;
+            }
+            QTableView::item {
+                padding: 4px 6px;
+                border: 0px;
+                background: #fbfbfc;
+                color: #1f2328;
+            }
+            QTableView::item:alternate {
+                background: #f2f5f8;
+            }
+            QTableView::item:selected {
+                background: #dfeaff;
+                color: #1f2328;
+                border: 1px solid #93c5fd;
             }
             QHeaderView::section {
                 background: #e9edf3;
@@ -630,19 +649,39 @@ void MainWindow::colorRows()
         const QString type = model->index(row, 2).data().toString();
         const bool isSelected = hasSelection && tableView->currentIndex().row() == row;
 
-        QColor bgColor = darkMode ? QColor("#0f172a") : QColor("#f4f6fb");
-        QColor fgColor = darkMode ? QColor("#dfe7f3") : QColor("#1f2328");
+        QColor bgColor = darkMode ? QColor("#17263a") : QColor("#f4f6fb");
+        QColor fgColor = darkMode ? QColor("#e5edf7") : QColor("#1f2328");
 
         if (isSelected) {
-            bgColor = darkMode ? QColor("#1d5fb6") : QColor("#dfeaff");
+            bgColor = darkMode ? QColor("#2a68bf") : QColor("#dfeaff");
             fgColor = darkMode ? QColor("#ffffff") : QColor("#0f172a");
-        } else if (direction == "TX") {
-            bgColor = darkMode ? QColor("#112c3f") : QColor("#eaf4ff");
-        } else if (direction == "RX") {
-            bgColor = darkMode ? QColor("#112d26") : QColor("#edf9ee");
-        }
+        } else if (darkMode) {
+            bgColor = QColor("#1a2d3d");
 
-        if (!darkMode && !isSelected) {
+            if (direction == "TX") {
+                bgColor = QColor("#1d3a4f");
+            } else if (direction == "RX") {
+                bgColor = QColor("#1f382e");
+            }
+
+            if (type == "CfgRd") {
+                bgColor = QColor("#224b70");
+            } else if (type == "CfgWr") {
+                bgColor = QColor("#5a3240");
+            } else if (type == "MemRd") {
+                bgColor = QColor("#1e3d5a");
+            } else if (type == "MemWr") {
+                bgColor = QColor("#594d25");
+            } else if (type == "Cpl") {
+                bgColor = QColor("#2e3459");
+            }
+        } else {
+            if (direction == "TX") {
+                bgColor = QColor("#eaf4ff");
+            } else if (direction == "RX") {
+                bgColor = QColor("#edf9ee");
+            }
+
             if (type == "CfgRd") {
                 bgColor = QColor("#eaf1ff");
             } else if (type == "CfgWr") {
