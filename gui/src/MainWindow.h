@@ -72,6 +72,7 @@ private:
     QLabel *rxLabel;
     QLabel *filteredLabel;
     QDialog *aiEmulatorDialog;
+    QDialog *pcieLsDialog;
     QTimer *liveTraceTimer;
     QProcess *liveTraceProcess;
     QString liveTracePath;
@@ -90,4 +91,5 @@ private:
                                  int jitterNs,
                                  double dropRate,
                                  int busCount);
+    void showPcieLsWindow(const QString &path);
 };
