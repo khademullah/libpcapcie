@@ -87,6 +87,8 @@ MainWindow::MainWindow(QWidget *parent)
     themeButton = new QPushButton("Dark", this);
     typeFilter = new QComboBox(this);
     directionFilter = new QComboBox(this);
+    backendFilter = new QComboBox(this);
+    deviceIdBox = new QLineEdit(this);
     searchBox = new QLineEdit(this);
     statusLabel = new QLabel("No trace loaded", this);
     totalLabel = new QLabel("Total: 0", this);
@@ -105,11 +107,23 @@ MainWindow::MainWindow(QWidget *parent)
     directionFilter->addItem("TX");
     directionFilter->addItem("RX");
 
+    backendFilter->addItem("pci");
+    backendFilter->addItem("dummy");
+    backendFilter->addItem("fpga");
+    backendFilter->addItem("armds");
+    backendFilter->addItem("xgig");
+
+    deviceIdBox->setPlaceholderText("PCI device (default: 0000:00:03.0)");
+    deviceIdBox->setText("0000:00:03.0");
     searchBox->setPlaceholderText("Filter by requester ID or address");
 
     toolbar->addWidget(openButton);
     toolbar->addWidget(enumerateButton);
     toolbar->addWidget(themeButton);
+    toolbar->addWidget(new QLabel("Backend:", this));
+    toolbar->addWidget(backendFilter);
+    toolbar->addWidget(new QLabel("Device:", this));
+    toolbar->addWidget(deviceIdBox);
     toolbar->addWidget(new QLabel("Type:", this));
     toolbar->addWidget(typeFilter);
     toolbar->addWidget(new QLabel("Direction:", this));
@@ -587,10 +601,19 @@ void MainWindow::loadCsv(const QString &path)
 
 void MainWindow::enumeratePciDevice()
 {
-    pcie_ctx_t *ctx = pcie_open("pci");
+    QString backend = backendFilter->currentText();
+    const QString deviceId = deviceIdBox->text().trimmed();
+
+    if (!deviceId.isEmpty() && backend == "pci") {
+        setenv("PCIE_PCI_DEVICE", deviceId.toLocal8Bit().constData(), 1);
+    } else {
+        unsetenv("PCIE_PCI_DEVICE");
+    }
+
+    pcie_ctx_t *ctx = pcie_open(backend.toLocal8Bit().constData());
     if (!ctx) {
         QMessageBox::warning(this, "PCI enumeration failed",
-                             "Unable to open the PCI backend. Make sure this machine exposes a PCIe device and the process has permission to access /sys/bus/pci/devices.");
+                             "Unable to open the selected backend. Make sure the backend exists and the device is accessible.");
         return;
     }
 

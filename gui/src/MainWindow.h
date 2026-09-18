@@ -43,6 +43,8 @@ private:
     QStandardItemModel *model;
     QComboBox *typeFilter;
     QComboBox *directionFilter;
+    QComboBox *backendFilter;
+    QLineEdit *deviceIdBox;
     QLineEdit *searchBox;
     QPushButton *openButton;
     QPushButton *enumerateButton;
