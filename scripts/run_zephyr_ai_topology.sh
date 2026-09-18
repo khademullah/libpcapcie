@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ZEPHYR_VENV="${ZEPHYR_VENV:-$HOME/zephyrproject/.venv/bin/activate}"
+ZEPHYR_BASE="${ZEPHYR_BASE:-$HOME/zephyrproject/zephyr}"
+ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK_INSTALL_DIR:-/home/khadem/zephyr-sdk-1.0.1}"
+QEMU_BIN="${QEMU_BIN:-$ZEPHYR_SDK_INSTALL_DIR/hosttools/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-aarch64}"
+TRACE_LOG="${TRACE_LOG:-${PWD}/zephyr_ai_topology_trace.log}"
+RUN_TIMEOUT_SECONDS="${RUN_TIMEOUT_SECONDS:-0}"
+
+# Prefer a user-supplied path, then common local Zephyr build locations, then the
+# example firmware repo used for this PCIe topology.
+KERNEL_PATH="${KERNEL_PATH:-${PWD}/build/zephyr/zephyr.elf}"
+if [[ ! -f "$KERNEL_PATH" ]]; then
+    for candidate in \
+        "$HOME/firmware-repos/firmware-on-arm-fast-models/zephyr-pcie-contrib/build/zephyr/zephyr.elf" \
+        "$HOME/firmware-repos/firmware-on-arm-fast-models/zephyr-rtos-qemu/build/zephyr/zephyr.elf" \
+        "$HOME/firmware-repos/firmware-on-arm-fast-models/zephyr-rtos/build/zephyr/zephyr.elf" \
+        "$HOME/zephyrproject/zephyr/build/zephyr/zephyr.elf"; do
+        if [[ -f "$candidate" ]]; then
+            KERNEL_PATH="$candidate"
+            break
+        fi
+    done
+fi
+
+printf '== Zephyr AI topology runner ==\n'
+
+if [[ ! -f "$ZEPHYR_VENV" ]]; then
+    echo "Missing Zephyr virtualenv at: $ZEPHYR_VENV"
+    echo "Expected: source ~/zephyrproject/.venv/bin/activate"
+    exit 1
+fi
+
+if [[ ! -d "$ZEPHYR_BASE" ]]; then
+    echo "Missing Zephyr source tree at: $ZEPHYR_BASE"
+    exit 1
+fi
+
+if [[ ! -d "$ZEPHYR_SDK_INSTALL_DIR" ]]; then
+    echo "Missing Zephyr SDK at: $ZEPHYR_SDK_INSTALL_DIR"
+    exit 1
+fi
+
+if [[ ! -x "$QEMU_BIN" ]]; then
+    echo "Missing qemu-system-aarch64 at: $QEMU_BIN"
+    exit 1
+fi
+
+if [[ ! -f "$KERNEL_PATH" ]]; then
+    echo "Missing Zephyr kernel image: $KERNEL_PATH"
+    echo "Build the Zephyr image first, then rerun this script."
+    echo "Typical commands:"
+    echo "  cd /home/khadem/firmware-repos/firmware-on-arm-fast-models/zephyr-pcie-contrib"
+    echo "  source ~/zephyrproject/.venv/bin/activate"
+    echo "  export ZEPHYR_BASE=~/zephyrproject/zephyr"
+    echo "  export ZEPHYR_TOOLCHAIN_VARIANT=zephyr"
+    echo "  export ZEPHYR_SDK_INSTALL_DIR=/home/khadem/zephyr-sdk-1.0.1"
+    echo "  west build -b qemu_cortex_a53 ."
+    exit 1
+fi
+
+# Activate the Zephyr environment.
+# shellcheck disable=SC1090
+source "$ZEPHYR_VENV"
+
+export ZEPHYR_BASE
+export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-zephyr}"
+export ZEPHYR_SDK_INSTALL_DIR
+
+printf 'Using ZEPHYR_BASE=%s\n' "$ZEPHYR_BASE"
+printf 'Using ZEPHYR_SDK_INSTALL_DIR=%s\n' "$ZEPHYR_SDK_INSTALL_DIR"
+printf 'Using QEMU=%s\n' "$QEMU_BIN"
+printf 'Using KERNEL=%s\n' "$KERNEL_PATH"
+printf 'Trace log: %s\n' "$TRACE_LOG"
+
+cleanup() {
+    if [[ -n "${QEMU_PID:-}" ]] && kill -0 "$QEMU_PID" 2>/dev/null; then
+        kill -TERM "$QEMU_PID" 2>/dev/null || true
+        sleep 1
+        if kill -0 "$QEMU_PID" 2>/dev/null; then
+            kill -KILL "$QEMU_PID" 2>/dev/null || true
+        fi
+        wait "$QEMU_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+"$QEMU_BIN" \
+  -cpu cortex-a53 \
+  -machine virt,secure=on,gic-version=3 \
+  -pidfile qemu.pid \
+  -chardev stdio,id=con,mux=on \
+  -serial chardev:con \
+  -mon chardev=con,mode=readline \
+  -display none \
+  -rtc clock=vm \
+  -net none \
+  -netdev user,id=net1 -netdev user,id=net2 \
+  -device pcie-root-port,id=rp1,bus=pcie.0,chassis=1,slot=1,addr=01.0,multifunction=on \
+  -device pcie-root-port,id=rp2,bus=pcie.0,chassis=2,slot=1,addr=01.1 \
+  -device pcie-root-port,id=rp3,bus=pcie.0,chassis=3,slot=1,addr=01.2 \
+  -device pcie-root-port,id=rp4,bus=pcie.0,chassis=4,slot=1,addr=01.3 \
+  -device x3130-upstream,id=switch0_up,bus=rp1,addr=00.0 \
+  -device xio3130-downstream,id=switch0_dp0,bus=switch0_up,chassis=11,slot=0,addr=00.0,multifunction=on \
+  -device xio3130-downstream,id=switch0_dp1,bus=switch0_up,chassis=12,slot=1,addr=00.1 \
+  -device nvme,id=gpu1,bus=switch0_dp0,addr=00.0,serial=AI_ACCEL_01 \
+  -device nvme,id=gpu2,bus=switch0_dp1,addr=00.0,serial=AI_ACCEL_02 \
+  -device x3130-upstream,id=switch1_up,bus=rp2,addr=00.0 \
+  -device xio3130-downstream,id=switch1_dp0,bus=switch1_up,chassis=21,slot=0,addr=00.0,multifunction=on \
+  -device xio3130-downstream,id=switch1_dp1,bus=switch1_up,chassis=22,slot=1,addr=00.1 \
+  -device nvme,id=gpu3,bus=switch1_dp0,addr=00.0,serial=AI_ACCEL_03 \
+  -device nvme,id=gpu4,bus=switch1_dp1,addr=00.0,serial=AI_ACCEL_04 \
+  -device x3130-upstream,id=switch2_up,bus=rp3,addr=00.0 \
+  -device xio3130-downstream,id=switch2_dp0,bus=switch2_up,chassis=31,slot=0,addr=00.0,multifunction=on \
+  -device xio3130-downstream,id=switch2_dp1,bus=switch2_up,chassis=32,slot=1,addr=00.1 \
+  -device nvme,id=nvme1,bus=switch2_dp0,addr=00.0,serial=DATA_POOL_01 \
+  -device nvme,id=nvme2,bus=switch2_dp1,addr=00.0,serial=DATA_POOL_02 \
+  -device x3130-upstream,id=switch3_up,bus=rp4,addr=00.0 \
+  -device xio3130-downstream,id=switch3_dp0,bus=switch3_up,chassis=41,slot=0,addr=00.0,multifunction=on \
+  -device xio3130-downstream,id=switch3_dp1,bus=switch3_up,chassis=42,slot=1,addr=00.1 \
+  -device e1000e,netdev=net1,bus=switch3_dp0,addr=00.0 \
+  -device e1000e,netdev=net2,bus=switch3_dp1,addr=00.0 \
+  -kernel "$KERNEL_PATH" \
+  -trace pci_cfg_* 2>&1 | tee "$TRACE_LOG" &
+QEMU_PID=$!
+
+if [[ "$RUN_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && (( RUN_TIMEOUT_SECONDS > 0 )); then
+    echo "Running Zephyr topology for ${RUN_TIMEOUT_SECONDS}s..."
+    sleep "$RUN_TIMEOUT_SECONDS"
+    cleanup
+    echo "Trace capture finished after ${RUN_TIMEOUT_SECONDS}s"
+    printf '\nTrace output written to %s\n' "$TRACE_LOG"
+    exit 0
+fi
+
+wait "$QEMU_PID"
+printf '\nTrace output written to %s\n' "$TRACE_LOG"

@@ -22,6 +22,9 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QSet>
+#include <QTimer>
+#include <QProcess>
 
 class MainWindow : public QMainWindow
 {
@@ -31,9 +34,12 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     void loadTraceFile(const QString &path);
     void openTraceDialog();
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void openTrace();
+    void saveTrace();
+    void pollLiveTrace();
     void enumeratePciDevice();
     void openAiPerfDialog();
     void applyFilter();
@@ -56,6 +62,7 @@ private:
     QLineEdit *scenarioBox;
     QLineEdit *searchBox;
     QPushButton *openButton;
+    QPushButton *saveButton;
     QPushButton *enumerateButton;
     QPushButton *aiPerfButton;
     QPushButton *themeButton;
@@ -64,7 +71,12 @@ private:
     QLabel *txLabel;
     QLabel *rxLabel;
     QLabel *filteredLabel;
+    QTimer *liveTraceTimer;
+    QProcess *liveTraceProcess;
+    QString liveTracePath;
+    QSet<QString> liveTraceSeen;
     bool darkMode;
+    bool suppressAiRunnerExitWarning;
     void applyTheme();
     void colorRows();
     void runAiPerformanceScenario(const QString &profile,

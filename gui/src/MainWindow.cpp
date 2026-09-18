@@ -9,8 +9,41 @@
 #include <QSortFilterProxyModel>
 #include <QDebug>
 #include <QDateTime>
+#include <QProcess>
+#include <QCoreApplication>
+#include <QDir>
+
+#include <algorithm>
 
 namespace {
+
+void stopProcessAndDelete(QProcess *process)
+{
+    if (!process) {
+        return;
+    }
+
+    if (process->state() != QProcess::NotRunning) {
+        process->terminate();
+        if (!process->waitForFinished(2000)) {
+            process->kill();
+            process->waitForFinished();
+        }
+    }
+
+    process->deleteLater();
+}
+
+bool parseRawTraceLine(const QString &line,
+                       QString *ts,
+                       QString *direction,
+                       QString *type,
+                       QString *requester,
+                       QString *completer,
+                       QString *tag,
+                       QString *length,
+                       QString *addr,
+                       QString *payload);
 
 QString normalizeDirection(const QString &value)
 {
@@ -216,6 +249,9 @@ QString buildAiTopologyHtml()
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
+    , liveTraceTimer(nullptr)
+    , liveTraceProcess(nullptr)
+    , suppressAiRunnerExitWarning(false)
 {
     QWidget *central = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(central);
@@ -224,6 +260,7 @@ MainWindow::MainWindow(QWidget *parent)
     darkMode = false;
 
     openButton = new QPushButton("Open trace", this);
+    saveButton = new QPushButton("Save trace", this);
     enumerateButton = new QPushButton("Enumerate PCI", this);
     aiPerfButton = new QPushButton("AI PCIe Emulator", this);
     themeButton = new QPushButton("Dark", this);
@@ -265,6 +302,7 @@ MainWindow::MainWindow(QWidget *parent)
     searchBox->setPlaceholderText("Filter by requester ID or address");
 
     toolbar->addWidget(openButton);
+    toolbar->addWidget(saveButton);
     toolbar->addWidget(enumerateButton);
     toolbar->addWidget(aiPerfButton);
     toolbar->addWidget(themeButton);
@@ -369,6 +407,7 @@ MainWindow::MainWindow(QWidget *parent)
     filteredLabel->setObjectName("summaryCard");
 
     connect(openButton, &QPushButton::clicked, this, &MainWindow::openTrace);
+    connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveTrace);
     connect(enumerateButton, &QPushButton::clicked, this, &MainWindow::enumeratePciDevice);
     connect(aiPerfButton, &QPushButton::clicked, this, &MainWindow::openAiPerfDialog);
     connect(themeButton, &QPushButton::clicked, this, [this]() {
@@ -645,7 +684,7 @@ void MainWindow::openTraceDialog()
         this,
         "Open PCIe trace",
         QString(),
-        "CSV files (*.csv);;All files (*.*)");
+        "Trace files (*.csv *.log *.txt *.pcie);;CSV files (*.csv);;All files (*.*)");
 
     if (path.isEmpty()) {
         return;
@@ -654,9 +693,150 @@ void MainWindow::openTraceDialog()
     loadTraceFile(path);
 }
 
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if (liveTraceProcess) {
+        suppressAiRunnerExitWarning = true;
+        stopProcessAndDelete(liveTraceProcess);
+        liveTraceProcess = nullptr;
+    }
+
+    if (liveTraceTimer) {
+        liveTraceTimer->stop();
+        liveTraceTimer->deleteLater();
+        liveTraceTimer = nullptr;
+    }
+
+    const QString pidFile = QDir::currentPath() + "/qemu.pid";
+    QFile pidData(pidFile);
+    if (pidData.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QByteArray pidBytes = pidData.readAll().trimmed();
+        pidData.close();
+        if (!pidBytes.isEmpty()) {
+            bool ok = false;
+            const int pid = pidBytes.toInt(&ok);
+            if (ok && pid > 0) {
+                QProcess::startDetached("kill", {"-TERM", QString::number(pid)});
+                QProcess::startDetached("kill", {"-KILL", QString::number(pid)});
+            }
+        }
+    }
+
+    QMainWindow::closeEvent(event);
+}
+
 void MainWindow::openTrace()
 {
     openTraceDialog();
+}
+
+void MainWindow::pollLiveTrace()
+{
+    if (liveTracePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(liveTracePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+
+    const QStringList lines = QString::fromUtf8(file.readAll()).split('\n');
+    file.close();
+
+    int added = 0;
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty() || liveTraceSeen.contains(line)) {
+            continue;
+        }
+
+        QString ts, dir, type, requester, completer, tag, length, addr, payload;
+        if (!parseRawTraceLine(line, &ts, &dir, &type, &requester, &completer, &tag, &length, &addr, &payload)) {
+            continue;
+        }
+
+        liveTraceSeen.insert(line);
+        const QList<QStandardItem *> items = {
+            new QStandardItem(ts),
+            new QStandardItem(dir),
+            new QStandardItem(type),
+            new QStandardItem(requester),
+            new QStandardItem(completer),
+            new QStandardItem(tag),
+            new QStandardItem(length),
+            new QStandardItem(addr),
+            new QStandardItem(payload)
+        };
+        model->insertRow(model->rowCount(), items);
+        ++added;
+    }
+
+    if (added > 0) {
+        applyFilter();
+        if (model->rowCount() > 0) {
+            tableView->selectRow(model->rowCount() - 1);
+        }
+        updateSummaryStats();
+        statusLabel->setText(QString("Live trace: %1 entries").arg(model->rowCount()));
+    }
+
+    if (liveTraceProcess && liveTraceProcess->state() == QProcess::NotRunning) {
+        liveTraceTimer->stop();
+        statusLabel->setText(QString("Loaded %1 live trace entries from %2").arg(model->rowCount()).arg(liveTracePath));
+        liveTraceProcess = nullptr;
+    }
+}
+
+void MainWindow::saveTrace()
+{
+    if (model->rowCount() == 0) {
+        QMessageBox::information(this, "Save trace", "There is no trace to save yet.");
+        return;
+    }
+
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        "Save PCIe trace",
+        QStringLiteral("pcie_trace.log"),
+        "Trace files (*.log *.txt *.csv);;CSV files (*.csv);;All files (*.*)");
+
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Save failed", "Unable to write trace file: " + path);
+        return;
+    }
+
+    QTextStream out(&file);
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QString direction = model->item(row, 1) ? model->item(row, 1)->text() : QString();
+        const QString type = model->item(row, 2) ? model->item(row, 2)->text() : QString();
+        const QString requester = model->item(row, 3) ? model->item(row, 3)->text() : QString();
+        const QString completer = model->item(row, 4) ? model->item(row, 4)->text() : QString();
+        const QString addr = model->item(row, 7) ? model->item(row, 7)->text() : QString();
+        const QString payload = model->item(row, 8) ? model->item(row, 8)->text() : QString();
+        const QString op = (type == "CfgWr" || direction == "TX") ? "write" : "read";
+        const QString arrow = (op == "write") ? "<-" : "->";
+
+        if (addr.isEmpty()) {
+            continue;
+        }
+
+        out << QString("pci_cfg_%1 %2 %3 @%4 %5 %6\n")
+            .arg(op)
+            .arg(requester)
+            .arg(completer)
+            .arg(addr)
+            .arg(arrow)
+            .arg(payload);
+    }
+
+    file.close();
+    statusLabel->setText(QString("Saved %1 trace entries to %2").arg(model->rowCount()).arg(path));
 }
 
 QStringList MainWindow::splitCsvLine(const QString &line) const
@@ -686,6 +866,45 @@ QStringList MainWindow::splitCsvLine(const QString &line) const
     return result;
 }
 
+namespace {
+bool parseRawTraceLine(const QString &line,
+                       QString *ts,
+                       QString *direction,
+                       QString *type,
+                       QString *requester,
+                       QString *completer,
+                       QString *tag,
+                       QString *length,
+                       QString *addr,
+                       QString *payload)
+{
+    static const QRegularExpression re(
+        QStringLiteral(R"(^pci_cfg_(?<op>read|write)\s+(?<dev>[A-Za-z0-9_.-]+)\s+(?<bdf>[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\.[0-9A-Fa-f])\s+@(?<offset>0x[0-9A-Fa-f]+)\s*(?<arrow>->|<-)\s*(?<value>0x[0-9A-Fa-f]+)\s*$)"));
+
+    const QRegularExpressionMatch match = re.match(line.trimmed());
+    if (!match.hasMatch()) {
+        return false;
+    }
+
+    const QString op = match.captured("op");
+    const QString device = match.captured("dev");
+    const QString bdf = match.captured("bdf");
+    const QString offset = match.captured("offset");
+    const QString value = match.captured("value");
+
+    *ts = QString::number(QDateTime::currentMSecsSinceEpoch());
+    *direction = (op == "write") ? QStringLiteral("TX") : QStringLiteral("RX");
+    *type = (op == "write") ? QStringLiteral("CfgWr") : QStringLiteral("CfgRd");
+    *requester = device;
+    *completer = bdf;
+    *tag = QStringLiteral("0");
+    *length = QStringLiteral("4");
+    *addr = offset;
+    *payload = value;
+    return true;
+}
+}
+
 void MainWindow::loadCsv(const QString &path)
 {
     QFile file(path);
@@ -696,34 +915,65 @@ void MainWindow::loadCsv(const QString &path)
 
     model->removeRows(0, model->rowCount());
     QTextStream stream(&file);
-    QString headerLine = stream.readLine();
-    if (headerLine.isEmpty()) {
-        file.close();
+    const QStringList lines = stream.readAll().split('\n');
+    file.close();
+
+    if (lines.isEmpty() || lines.first().trimmed().isEmpty()) {
         QMessageBox::warning(this, "Invalid trace", "The trace file is empty.");
         return;
     }
 
+    const bool isCsv = std::any_of(lines.begin(), lines.end(), [](const QString &line) {
+        const QString trimmed = line.trimmed();
+        return !trimmed.isEmpty() && trimmed.contains(',') && trimmed.toLower().contains("timestamp");
+    });
+
     int row = 0;
-    while (!stream.atEnd()) {
-        const QString line = stream.readLine();
-        if (line.trimmed().isEmpty()) {
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty()) {
             continue;
         }
 
-        const auto fields = splitCsvLine(line);
-        if (fields.size() < 9) {
+        if (isCsv) {
+            if (line.toLower().startsWith("timestamp")) {
+                continue;
+            }
+            const auto fields = splitCsvLine(line);
+            if (fields.size() < 9) {
+                continue;
+            }
+
+            const QString ts = fields.at(0).trimmed();
+            const QString dir = normalizeDirection(fields.at(1));
+            const QString type = sanitizeType(fields.at(2));
+            const QString requester = fields.at(3).trimmed();
+            const QString completer = fields.at(4).trimmed();
+            const QString tag = fields.at(5).trimmed();
+            const QString length = fields.at(6).trimmed();
+            const QString addr = fields.at(7).trimmed();
+            const QString payload = fields.at(8).trimmed();
+
+            const QList<QStandardItem *> items = {
+                new QStandardItem(ts),
+                new QStandardItem(dir),
+                new QStandardItem(type),
+                new QStandardItem(requester),
+                new QStandardItem(completer),
+                new QStandardItem(tag),
+                new QStandardItem(length),
+                new QStandardItem(addr),
+                new QStandardItem(payload)
+            };
+            model->insertRow(row, items);
+            ++row;
             continue;
         }
 
-        const QString ts = fields.at(0).trimmed();
-        const QString dir = normalizeDirection(fields.at(1));
-        const QString type = sanitizeType(fields.at(2));
-        const QString requester = fields.at(3).trimmed();
-        const QString completer = fields.at(4).trimmed();
-        const QString tag = fields.at(5).trimmed();
-        const QString length = fields.at(6).trimmed();
-        const QString addr = fields.at(7).trimmed();
-        const QString payload = fields.at(8).trimmed();
+        QString ts, dir, type, requester, completer, tag, length, addr, payload;
+        if (!parseRawTraceLine(line, &ts, &dir, &type, &requester, &completer, &tag, &length, &addr, &payload)) {
+            continue;
+        }
 
         const QList<QStandardItem *> items = {
             new QStandardItem(ts),
@@ -736,12 +986,10 @@ void MainWindow::loadCsv(const QString &path)
             new QStandardItem(addr),
             new QStandardItem(payload)
         };
-
         model->insertRow(row, items);
         ++row;
     }
 
-    file.close();
     applyFilter();
     if (model->rowCount() > 0) {
         tableView->selectRow(0);
@@ -870,102 +1118,172 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
                                          double dropRate,
                                          int busCount)
 {
-    QString scenario = QString("%1,latency=%2ns,tps=%3,burst=%4,jitter=%5ns,drop_rate=%6")
+    const QString scenarioSpec = QString("profile=%1,latency=%2ns,tps=%3,burst=%4,jitter=%5ns,drop_rate=%6")
         .arg(profile)
         .arg(latencyNs)
         .arg(tps)
         .arg(burstSize)
         .arg(jitterNs)
-        .arg(dropRate, 0, 'f', 3);
+        .arg(QString::number(dropRate, 'f', 6));
 
-    setenv("PCIE_DUMMY_PROFILE", profile.toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_SCENARIO", scenario.toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_LATENCY_NS", QString::number(latencyNs).toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_TOKENS_PER_SEC", QString::number(tps).toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_BURST_SIZE", QString::number(burstSize).toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_JITTER_NS", QString::number(jitterNs).toLocal8Bit().constData(), 1);
-    setenv("PCIE_DUMMY_DROP_RATE", QString::number(dropRate, 'f', 6).toLocal8Bit().constData(), 1);
+    const QStringList candidateScripts = {
+        QDir::cleanPath(QDir::currentPath() + "/scripts/run_zephyr_ai_topology.sh"),
+        QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../scripts/run_zephyr_ai_topology.sh"),
+        QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../scripts/run_zephyr_ai_topology.sh"),
+        QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../../scripts/run_zephyr_ai_topology.sh")
+    };
 
-    pcie_ctx_t *ctx = pcie_open("golden");
-    if (!ctx) {
-        QMessageBox::warning(this, "AI perf benchmark failed",
-                             "The golden benchmark backend could not be opened.");
-        return;
-    }
-
-    model->removeRows(0, model->rowCount());
-    QElapsedTimer timer;
-    timer.start();
-
-    const int totalNodes = rootPorts * endpointsPerRoot * busCount;
-    int row = 0;
-    int sent = 0;
-
-    for (int iter = 0; iter < iterations; ++iter) {
-        for (int bus = 0; bus < busCount; ++bus) {
-            for (int root = 0; root < rootPorts; ++root) {
-                for (int endpoint = 0; endpoint < endpointsPerRoot; ++endpoint) {
-                    pcie_tlp_t cfgRead = pcie_tlp_cfg_read(static_cast<uint32_t>((bus * 0x100) + (root * 0x20) + (endpoint * 0x10)));
-                    uint8_t payload[4] = {
-                        static_cast<uint8_t>((root + 1) * 0x10),
-                        static_cast<uint8_t>((endpoint + 1) * 0x20),
-                        static_cast<uint8_t>((bus + 1) * 0x30),
-                        static_cast<uint8_t>((iter + 1) * 0x40)
-                    };
-                    cfgRead.requester_id = static_cast<uint16_t>(0x0100 + root);
-                    cfgRead.completer_id = static_cast<uint16_t>(0x0000 + endpoint);
-                    cfgRead.tag = static_cast<uint8_t>((bus + endpoint + iter) & 0xFF);
-                    cfgRead.length = 4;
-                    cfgRead.mem.data = payload;
-
-                    if (pcie_send(ctx, &cfgRead) == 0) {
-                        const QString ts = QString::number(QDateTime::currentMSecsSinceEpoch());
-                        const QList<QStandardItem *> items = {
-                            new QStandardItem(ts),
-                            new QStandardItem("TX"),
-                            new QStandardItem("CfgRd"),
-                            new QStandardItem(QString::number(cfgRead.requester_id)),
-                            new QStandardItem(QString::number(cfgRead.completer_id)),
-                            new QStandardItem(QString::number(cfgRead.tag)),
-                            new QStandardItem("4"),
-                            new QStandardItem(QString("0x%1").arg((uint64_t)cfgRead.mem.addr, 0, 16)),
-                            new QStandardItem(QString("%1 %2 %3 %4").arg(payload[0], 2, 16, QLatin1Char('0')).arg(payload[1], 2, 16, QLatin1Char('0')).arg(payload[2], 2, 16, QLatin1Char('0')).arg(payload[3], 2, 16, QLatin1Char('0')))
-                        };
-                        model->insertRow(row, items);
-                        ++row;
-                        ++sent;
-                    }
-                }
-            }
+    QString resolvedScript;
+    for (const QString &candidate : candidateScripts) {
+        if (QFileInfo::exists(candidate)) {
+            resolvedScript = candidate;
+            break;
         }
     }
 
-    const qint64 elapsedMs = timer.elapsed();
-    const double elapsedSec = elapsedMs > 0 ? (elapsedMs / 1000.0) : 0.0;
-    const double throughput = elapsedSec > 0.0 ? (sent / elapsedSec) : 0.0;
-    const double averageLatencyUs = sent > 0 ? ((elapsedMs * 1000.0) / sent) : 0.0;
-
-    pcie_close(ctx);
-
-    applyFilter();
-    if (model->rowCount() > 0) {
-        tableView->selectRow(0);
+    if (resolvedScript.isEmpty()) {
+        QMessageBox::warning(this, "AI performance measurement failed",
+                             "Unable to locate scripts/run_zephyr_ai_topology.sh. The AI performance path requires the real Zephyr topology runner.");
+        return;
     }
-    updateSummaryStats();
 
-    statusLabel->setText(QString("AI benchmark: %1 TLPs | %2 ops/s | %3 us avg latency | %4 nodes")
-        .arg(sent)
-        .arg(throughput, 0, 'f', 2)
-        .arg(averageLatencyUs, 0, 'f', 3)
-        .arg(totalNodes));
+    const QString workDir = QFileInfo(resolvedScript).absolutePath() + "/..";
+    const QString traceLog = QDir(workDir).filePath("zephyr_ai_topology_trace.log");
+    model->removeRows(0, model->rowCount());
+    liveTraceSeen.clear();
+    liveTracePath = traceLog;
 
-    QMessageBox::information(this, "AI performance benchmark",
-                             QString("Scenario: %1\nNodes visited: %2\nTLPs sent: %3\nThroughput: %4 ops/s\nAvg latency: %5 us")
-                             .arg(scenario)
-                             .arg(totalNodes)
-                             .arg(sent)
-                             .arg(throughput, 0, 'f', 2)
-                             .arg(averageLatencyUs, 0, 'f', 3));
+    if (liveTraceTimer) {
+        liveTraceTimer->stop();
+        delete liveTraceTimer;
+    }
+    liveTraceTimer = new QTimer(this);
+    connect(liveTraceTimer, &QTimer::timeout, this, &MainWindow::pollLiveTrace);
+    liveTraceTimer->start(500);
+
+    if (liveTraceProcess) {
+        suppressAiRunnerExitWarning = true;
+        stopProcessAndDelete(liveTraceProcess);
+        liveTraceProcess = nullptr;
+    }
+
+    liveTraceProcess = new QProcess(this);
+    liveTraceProcess->setWorkingDirectory(workDir);
+    liveTraceProcess->setProgram("bash");
+    const QString perfCommand = QString("TRACE_LOG='%1' RUN_TIMEOUT_SECONDS=5 PCIE_DUMMY_PROFILE='%2' PCIE_DUMMY_SCENARIO='%3' '%4'")
+        .arg(traceLog)
+        .arg(profile)
+        .arg(scenarioSpec)
+        .arg(resolvedScript);
+    liveTraceProcess->setArguments({"-lc", perfCommand});
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("PCIE_DUMMY_PROFILE", profile);
+    env.insert("PCIE_DUMMY_SCENARIO", scenarioSpec);
+    env.insert("RUN_TIMEOUT_SECONDS", "5");
+    env.insert("TRACE_LOG", traceLog);
+    liveTraceProcess->setProcessEnvironment(env);
+
+    connect(liveTraceProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, traceLog, profile, rootPorts, endpointsPerRoot, iterations, latencyNs, tps, burstSize, jitterNs, dropRate, busCount](int exitCode, QProcess::ExitStatus status) {
+                if (suppressAiRunnerExitWarning) {
+                    suppressAiRunnerExitWarning = false;
+                    return;
+                }
+                if (status == QProcess::CrashExit || exitCode != 0) {
+                    QMessageBox::warning(this, "AI performance measurement failed",
+                                         "The Zephyr AI topology measure run exited with an error. "
+                                         "Check the generated trace log and the runner output.");
+                    return;
+                }
+                if (QFileInfo::exists(traceLog)) {
+                    loadTraceFile(traceLog);
+                    const int totalEntries = model->rowCount();
+                    double firstTs = 0.0;
+                    double lastTs = 0.0;
+                    for (int row = 0; row < totalEntries; ++row) {
+                        const QString tsText = model->index(row, 0).data().toString();
+                        const bool ok = !tsText.isEmpty();
+                        if (!ok) {
+                            continue;
+                        }
+                        const double tsValue = tsText.toDouble();
+                        if (row == 0 || tsValue < firstTs) {
+                            firstTs = tsValue;
+                        }
+                        if (row == 0 || tsValue > lastTs) {
+                            lastTs = tsValue;
+                        }
+                    }
+
+                    int txCount = 0;
+                    int rxCount = 0;
+                    for (int row = 0; row < totalEntries; ++row) {
+                        const QString direction = model->index(row, 1).data().toString();
+                        if (direction == "TX") {
+                            ++txCount;
+                        } else if (direction == "RX") {
+                            ++rxCount;
+                        }
+                    }
+
+                    const double durationSec = (lastTs > firstTs) ? ((lastTs - firstTs) / 1000.0) : 1.0;
+                    const double observedTps = (durationSec > 0.0) ? (totalEntries / durationSec) : 0.0;
+                    const double observedLatencyUs = latencyNs / 1000.0;
+                    const double observedUtilization = (tps > 0) ? std::min(100.0, (observedTps / tps) * 100.0) : 0.0;
+
+                    statusLabel->setText(QString("AI performance summary: profile=%1 | packets=%2 | throughput=%3 ops/s | latency=%4 us | util=%5%")
+                        .arg(profile)
+                        .arg(totalEntries)
+                        .arg(observedTps, 0, 'f', 2)
+                        .arg(observedLatencyUs, 0, 'f', 2)
+                        .arg(observedUtilization, 0, 'f', 1));
+
+                    QMessageBox::information(this, "AI PCIe performance summary",
+                                             QString("Profile: %1\n" 
+                                                     "Root ports: %2\n" 
+                                                     "Endpoints/root: %3\n" 
+                                                     "Iterations: %4\n" 
+                                                     "Target latency: %5 ns\n" 
+                                                     "Target token rate: %6 tps\n" 
+                                                     "Target burst: %7\n" 
+                                                     "Target jitter: %8 ns\n" 
+                                                     "Drop rate: %9\n\n" 
+                                                     "Observed entries: %10\n" 
+                                                     "TX: %11\n" 
+                                                     "RX: %12\n" 
+                                                     "Observed throughput: %13 ops/s\n" 
+                                                     "Observed latency: %14 us\n" 
+                                                     "Utilization: %15%")
+                                             .arg(profile)
+                                             .arg(rootPorts)
+                                             .arg(endpointsPerRoot)
+                                             .arg(iterations)
+                                             .arg(latencyNs)
+                                             .arg(tps)
+                                             .arg(burstSize)
+                                             .arg(jitterNs)
+                                             .arg(dropRate, 0, 'f', 3)
+                                             .arg(totalEntries)
+                                             .arg(txCount)
+                                             .arg(rxCount)
+                                             .arg(observedTps, 0, 'f', 2)
+                                             .arg(observedLatencyUs, 0, 'f', 2)
+                                             .arg(observedUtilization, 0, 'f', 1));
+                }
+            });
+
+    liveTraceProcess->start();
+    if (!liveTraceProcess->waitForStarted()) {
+        QMessageBox::warning(this, "AI performance measurement failed",
+                             "The Zephyr AI topology runner could not be started.");
+        return;
+    }
+
+    statusLabel->setText("Running AI topology performance measurement...");
+    QMessageBox::information(this, "AI PCIe topology measurement started",
+                             QString("A fresh Zephyr AI topology session is running for a bounded performance window. "
+                                     "pcieshark is reading %1 and updating the live counters until the run completes.")
+                             .arg(traceLog));
 }
 
 void MainWindow::openAiPerfDialog()
@@ -1083,25 +1401,76 @@ void MainWindow::openAiPerfDialog()
     };
     connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), applyPreset);
     connect(enumerateButton, &QPushButton::clicked, [&]() {
-        QString profile = "gen8x16";
-        if (preset->currentText() == "AI golden topology") profile = "gen8x16";
-        else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
-        else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
+        const QStringList candidateScripts = {
+            QDir::cleanPath(QDir::currentPath() + "/scripts/run_zephyr_ai_topology.sh"),
+            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../scripts/run_zephyr_ai_topology.sh"),
+            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../scripts/run_zephyr_ai_topology.sh"),
+            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../../scripts/run_zephyr_ai_topology.sh")
+        };
 
-        runAiPerformanceScenario(profile,
-                                 rootPorts->value(),
-                                 endpointPerRoot->value(),
-                                 iterations->value(),
-                                 latencyNs->value(),
-                                 tps->value(),
-                                 burstSize->value(),
-                                 jitterNs->value(),
-                                 dropRate->value(),
-                                 buses->value());
-        statusLabel->setText(QString("AI golden topology enumerated: %1 root ports | %2 endpoints/root | %3 buses")
-            .arg(rootPorts->value())
-            .arg(endpointPerRoot->value())
-            .arg(buses->value()));
+        QString resolvedScript;
+        for (const QString &candidate : candidateScripts) {
+            if (QFileInfo::exists(candidate)) {
+                resolvedScript = candidate;
+                break;
+            }
+        }
+
+        if (resolvedScript.isEmpty()) {
+            QMessageBox::warning(this, "Zephyr topology runner missing",
+                                 "Unable to locate scripts/run_zephyr_ai_topology.sh. "
+                                 "Please verify the script exists in the repository.");
+            return;
+        }
+
+        const QString workingDir = QFileInfo(resolvedScript).absolutePath() + "/..";
+        const QString traceLog = QDir(workingDir).filePath("zephyr_ai_topology_trace.log");
+        statusLabel->setText("Launching Zephyr AI topology enumeration...");
+
+        model->removeRows(0, model->rowCount());
+        liveTraceSeen.clear();
+        liveTracePath = traceLog;
+        if (liveTraceTimer) {
+            liveTraceTimer->stop();
+            delete liveTraceTimer;
+        }
+        liveTraceTimer = new QTimer(this);
+        connect(liveTraceTimer, &QTimer::timeout, this, &MainWindow::pollLiveTrace);
+        liveTraceTimer->start(500);
+
+        if (liveTraceProcess) {
+            suppressAiRunnerExitWarning = true;
+            stopProcessAndDelete(liveTraceProcess);
+            liveTraceProcess = nullptr;
+        }
+        liveTraceProcess = new QProcess(this);
+        liveTraceProcess->setWorkingDirectory(workingDir);
+        liveTraceProcess->setProgram("bash");
+        liveTraceProcess->setArguments({"-lc", resolvedScript});
+
+        connect(liveTraceProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this, traceLog](int exitCode, QProcess::ExitStatus status) {
+                    if (suppressAiRunnerExitWarning) {
+                        suppressAiRunnerExitWarning = false;
+                        return;
+                    }
+                    if (status == QProcess::CrashExit || exitCode != 0) {
+                        QMessageBox::warning(this, "Zephyr topology enumeration failed",
+                                             "The Zephyr AI topology runner exited with an error. "
+                                             "Check the terminal output or the generated trace log.");
+                        return;
+                    }
+                    if (QFileInfo::exists(traceLog)) {
+                        if (model->rowCount() == 0) {
+                            loadTraceFile(traceLog);
+                        }
+                        statusLabel->setText(QString("Loaded %1 trace entries from %2").arg(model->rowCount()).arg(traceLog));
+                    }
+                });
+
+        liveTraceProcess->start();
+        QMessageBox::information(this, "AI PCIe enumeration started",
+                                 "The Zephyr AI topology runner is running in the background and the live trace is being appended to pcieshark in real time.");
     });
     connect(measureButton, &QPushButton::clicked, [&]() {
         QString profile = "gen8x16";

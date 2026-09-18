@@ -1,0 +1,17 @@
+# Zephyr-backed AI PCIe topology requirements
+# This repo expects the Zephyr runtime environment to be installed and available in the host
+# before running the QEMU enumeration flow.
+
+# Host prerequisites
+# - Python 3
+# - Git
+# - CMake / ninja / make
+# - Zephyr SDK: /home/khadem/zephyr-sdk-1.0.1
+# - Zephyr project: ~/zephyrproject/zephyr
+# - Zephyr Python venv: ~/zephyrproject/.venv
+# - QEMU AArch64 binary: /home/khadem/zephyr-sdk-1.0.1/hosttools/sysroots/x86_64-pokysdk-linux/usr/bin/qemu-system-aarch64
+
+# Usage:
+#   make install -r requirements
+#   make zephyr-setup
+#   make zephyr-ai-enum
