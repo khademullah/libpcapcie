@@ -101,6 +101,117 @@ QString makeHexLabel(uint32_t value, int width)
     return QString("0x%1").arg(value, width, 16, QLatin1Char('0')).toUpper();
 }
 
+QString buildAiTopologyHtml()
+{
+    return QString(
+        "<html><body style='background:#0f1117;color:#e7ebf3;font-family:monospace;'>"
+        "<div style='padding:8px;'>"
+        "<div style='text-align:center;font-weight:bold;font-size:18px;padding:8px;'>[ CPU Complex ]</div>"
+        "<div style='text-align:center;font-size:14px;padding-bottom:8px;'>PCIe Bus 00</div>"
+        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<tr>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[ rp1 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(01.0, Bus 01)</div>"
+        "<div>Compute Hub 1</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[ rp2 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(01.1, Bus 07)</div>"
+        "<div>Compute Hub 2</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[ rp3 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(01.2, Bus 13)</div>"
+        "<div>Storage Array 1</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #b7bec9;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[ rp4 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(01.3, Bus 19)</div>"
+        "<div>Storage Array 2</div>"
+        "</td>"
+        "</tr>"
+        "</table>"
+        "<div style='border-top:2px solid #dfe5ee; margin:10px 0;'></div>"
+        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<tr>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[switch0_up]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(00.0, Bus 02)</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[switch1_up]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(00.0, Bus 08)</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[switch2_up]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(00.0, Bus 14)</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:24%;'>"
+        "<div style='font-weight:bold;'>[switch3_up]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(00.0, Bus 20)</div>"
+        "</td>"
+        "</tr>"
+        "</table>"
+        "<table width='100%' style='border-spacing:14px 10px;'>"
+        "<tr>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw0 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw0 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw1 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw1 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw2 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw2 dp1]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw3 dp0]</td>"
+        "<td align='center' style='border:1px solid #9aa4b2;padding:8px;width:12%;'>[sw3 dp1]</td>"
+        "</tr>"
+        "</table>"
+        "<table width='100%' style='border-spacing:14px 8px;'>"
+        "<tr>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ GPU 1 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(3:0.0)</div>"
+        "<div>ai1</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ GPU 2 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(5:0.0)</div>"
+        "<div>ai2</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ GPU 3 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(9:0.0)</div>"
+        "<div>ai3</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ GPU 4 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(11:0.0)</div>"
+        "<div>ai4</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ NVMe 1 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(15:0.0)</div>"
+        "<div>nvme1</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ NVMe 2 ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(17:0.0)</div>"
+        "<div>nvme2</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ SmartNIC ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(21:0.0)</div>"
+        "<div>eth1</div>"
+        "</td>"
+        "<td align='center' style='border:1px solid #dfe5ee;padding:8px;width:12%;'>"
+        "<div style='font-weight:bold;'>[ SmartNIC ]</div>"
+        "<div style='font-size:12px;opacity:0.9;'>(23:0.0)</div>"
+        "<div>eth2</div>"
+        "</td>"
+        "</tr>"
+        "</table>"
+        "</div></body></html>");
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -114,11 +225,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     openButton = new QPushButton("Open trace", this);
     enumerateButton = new QPushButton("Enumerate PCI", this);
+    aiPerfButton = new QPushButton("AI PCIe Emulator", this);
     themeButton = new QPushButton("Dark", this);
     typeFilter = new QComboBox(this);
     directionFilter = new QComboBox(this);
     backendFilter = new QComboBox(this);
     deviceIdBox = new QLineEdit(this);
+    scenarioBox = new QLineEdit(this);
     searchBox = new QLineEdit(this);
     statusLabel = new QLabel("No trace loaded", this);
     totalLabel = new QLabel("Total: 0", this);
@@ -138,22 +251,29 @@ MainWindow::MainWindow(QWidget *parent)
     directionFilter->addItem("RX");
 
     backendFilter->addItem("pci");
+    backendFilter->addItem("golden");
     backendFilter->addItem("dummy");
     backendFilter->addItem("fpga");
     backendFilter->addItem("armds");
     backendFilter->addItem("xgig");
+    backendFilter->setCurrentText("golden");
 
     deviceIdBox->setPlaceholderText("PCI device (default: 0000:00:03.0)");
     deviceIdBox->setText("0000:00:03.0");
+    scenarioBox->setPlaceholderText("Golden profile: gen8x16, latency=250ns, tps=250000");
+    scenarioBox->setText("gen8x16,latency=250ns,tps=250000,burst=16,jitter=50ns");
     searchBox->setPlaceholderText("Filter by requester ID or address");
 
     toolbar->addWidget(openButton);
     toolbar->addWidget(enumerateButton);
+    toolbar->addWidget(aiPerfButton);
     toolbar->addWidget(themeButton);
     toolbar->addWidget(new QLabel("Backend:", this));
     toolbar->addWidget(backendFilter);
     toolbar->addWidget(new QLabel("Device:", this));
     toolbar->addWidget(deviceIdBox);
+    toolbar->addWidget(new QLabel("Scenario:", this));
+    toolbar->addWidget(scenarioBox);
     toolbar->addWidget(new QLabel("Type:", this));
     toolbar->addWidget(typeFilter);
     toolbar->addWidget(new QLabel("Direction:", this));
@@ -250,6 +370,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(openButton, &QPushButton::clicked, this, &MainWindow::openTrace);
     connect(enumerateButton, &QPushButton::clicked, this, &MainWindow::enumeratePciDevice);
+    connect(aiPerfButton, &QPushButton::clicked, this, &MainWindow::openAiPerfDialog);
     connect(themeButton, &QPushButton::clicked, this, [this]() {
         darkMode = !darkMode;
         applyTheme();
@@ -633,11 +754,25 @@ void MainWindow::enumeratePciDevice()
 {
     QString backend = backendFilter->currentText();
     const QString deviceId = deviceIdBox->text().trimmed();
+    const QString scenario = scenarioBox->text().trimmed();
 
     if (!deviceId.isEmpty() && backend == "pci") {
         setenv("PCIE_PCI_DEVICE", deviceId.toLocal8Bit().constData(), 1);
     } else {
         unsetenv("PCIE_PCI_DEVICE");
+    }
+
+    if (backend == "dummy" || backend == "golden") {
+        if (!scenario.isEmpty()) {
+            setenv("PCIE_DUMMY_SCENARIO", scenario.toLocal8Bit().constData(), 1);
+            setenv("PCIE_DUMMY_PROFILE", scenario.toLocal8Bit().constData(), 1);
+        } else {
+            unsetenv("PCIE_DUMMY_SCENARIO");
+            unsetenv("PCIE_DUMMY_PROFILE");
+        }
+    } else {
+        unsetenv("PCIE_DUMMY_SCENARIO");
+        unsetenv("PCIE_DUMMY_PROFILE");
     }
 
     pcie_ctx_t *ctx = pcie_open(backend.toLocal8Bit().constData());
@@ -722,6 +857,273 @@ void MainWindow::enumeratePciDevice()
         .arg(linkStatus.negotiated_link_width);
 
     statusLabel->setText(QString("Enumerated PCI device (%1)").arg(deviceSummary));
+}
+
+void MainWindow::runAiPerformanceScenario(const QString &profile,
+                                         int rootPorts,
+                                         int endpointsPerRoot,
+                                         int iterations,
+                                         int latencyNs,
+                                         int tps,
+                                         int burstSize,
+                                         int jitterNs,
+                                         double dropRate,
+                                         int busCount)
+{
+    QString scenario = QString("%1,latency=%2ns,tps=%3,burst=%4,jitter=%5ns,drop_rate=%6")
+        .arg(profile)
+        .arg(latencyNs)
+        .arg(tps)
+        .arg(burstSize)
+        .arg(jitterNs)
+        .arg(dropRate, 0, 'f', 3);
+
+    setenv("PCIE_DUMMY_PROFILE", profile.toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_SCENARIO", scenario.toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_LATENCY_NS", QString::number(latencyNs).toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_TOKENS_PER_SEC", QString::number(tps).toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_BURST_SIZE", QString::number(burstSize).toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_JITTER_NS", QString::number(jitterNs).toLocal8Bit().constData(), 1);
+    setenv("PCIE_DUMMY_DROP_RATE", QString::number(dropRate, 'f', 6).toLocal8Bit().constData(), 1);
+
+    pcie_ctx_t *ctx = pcie_open("golden");
+    if (!ctx) {
+        QMessageBox::warning(this, "AI perf benchmark failed",
+                             "The golden benchmark backend could not be opened.");
+        return;
+    }
+
+    model->removeRows(0, model->rowCount());
+    QElapsedTimer timer;
+    timer.start();
+
+    const int totalNodes = rootPorts * endpointsPerRoot * busCount;
+    int row = 0;
+    int sent = 0;
+
+    for (int iter = 0; iter < iterations; ++iter) {
+        for (int bus = 0; bus < busCount; ++bus) {
+            for (int root = 0; root < rootPorts; ++root) {
+                for (int endpoint = 0; endpoint < endpointsPerRoot; ++endpoint) {
+                    pcie_tlp_t cfgRead = pcie_tlp_cfg_read(static_cast<uint32_t>((bus * 0x100) + (root * 0x20) + (endpoint * 0x10)));
+                    uint8_t payload[4] = {
+                        static_cast<uint8_t>((root + 1) * 0x10),
+                        static_cast<uint8_t>((endpoint + 1) * 0x20),
+                        static_cast<uint8_t>((bus + 1) * 0x30),
+                        static_cast<uint8_t>((iter + 1) * 0x40)
+                    };
+                    cfgRead.requester_id = static_cast<uint16_t>(0x0100 + root);
+                    cfgRead.completer_id = static_cast<uint16_t>(0x0000 + endpoint);
+                    cfgRead.tag = static_cast<uint8_t>((bus + endpoint + iter) & 0xFF);
+                    cfgRead.length = 4;
+                    cfgRead.mem.data = payload;
+
+                    if (pcie_send(ctx, &cfgRead) == 0) {
+                        const QString ts = QString::number(QDateTime::currentMSecsSinceEpoch());
+                        const QList<QStandardItem *> items = {
+                            new QStandardItem(ts),
+                            new QStandardItem("TX"),
+                            new QStandardItem("CfgRd"),
+                            new QStandardItem(QString::number(cfgRead.requester_id)),
+                            new QStandardItem(QString::number(cfgRead.completer_id)),
+                            new QStandardItem(QString::number(cfgRead.tag)),
+                            new QStandardItem("4"),
+                            new QStandardItem(QString("0x%1").arg((uint64_t)cfgRead.mem.addr, 0, 16)),
+                            new QStandardItem(QString("%1 %2 %3 %4").arg(payload[0], 2, 16, QLatin1Char('0')).arg(payload[1], 2, 16, QLatin1Char('0')).arg(payload[2], 2, 16, QLatin1Char('0')).arg(payload[3], 2, 16, QLatin1Char('0')))
+                        };
+                        model->insertRow(row, items);
+                        ++row;
+                        ++sent;
+                    }
+                }
+            }
+        }
+    }
+
+    const qint64 elapsedMs = timer.elapsed();
+    const double elapsedSec = elapsedMs > 0 ? (elapsedMs / 1000.0) : 0.0;
+    const double throughput = elapsedSec > 0.0 ? (sent / elapsedSec) : 0.0;
+    const double averageLatencyUs = sent > 0 ? ((elapsedMs * 1000.0) / sent) : 0.0;
+
+    pcie_close(ctx);
+
+    applyFilter();
+    if (model->rowCount() > 0) {
+        tableView->selectRow(0);
+    }
+    updateSummaryStats();
+
+    statusLabel->setText(QString("AI benchmark: %1 TLPs | %2 ops/s | %3 us avg latency | %4 nodes")
+        .arg(sent)
+        .arg(throughput, 0, 'f', 2)
+        .arg(averageLatencyUs, 0, 'f', 3)
+        .arg(totalNodes));
+
+    QMessageBox::information(this, "AI performance benchmark",
+                             QString("Scenario: %1\nNodes visited: %2\nTLPs sent: %3\nThroughput: %4 ops/s\nAvg latency: %5 us")
+                             .arg(scenario)
+                             .arg(totalNodes)
+                             .arg(sent)
+                             .arg(throughput, 0, 'f', 2)
+                             .arg(averageLatencyUs, 0, 'f', 3));
+}
+
+void MainWindow::openAiPerfDialog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("AI PCIe Emulator");
+    dialog.resize(980, 760);
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+
+    QTextBrowser *topologyView = new QTextBrowser(&dialog);
+    topologyView->setHtml(buildAiTopologyHtml());
+    topologyView->setOpenExternalLinks(false);
+    topologyView->setReadOnly(true);
+    topologyView->setMinimumHeight(360);
+
+    QFormLayout *form = new QFormLayout();
+    QComboBox *preset = new QComboBox(&dialog);
+    preset->addItem("AI cluster baseline");
+    preset->addItem("Low latency mesh");
+    preset->addItem("High throughput fabric");
+    preset->addItem("Custom");
+    preset->setCurrentText("AI cluster baseline");
+
+    QSpinBox *rootPorts = new QSpinBox(&dialog);
+    rootPorts->setRange(1, 16);
+    rootPorts->setValue(4);
+    QSpinBox *endpointPerRoot = new QSpinBox(&dialog);
+    endpointPerRoot->setRange(1, 16);
+    endpointPerRoot->setValue(2);
+    QSpinBox *buses = new QSpinBox(&dialog);
+    buses->setRange(1, 8);
+    buses->setValue(4);
+    QSpinBox *iterations = new QSpinBox(&dialog);
+    iterations->setRange(1, 1000);
+    iterations->setValue(10);
+    QSpinBox *latencyNs = new QSpinBox(&dialog);
+    latencyNs->setRange(0, 1000000);
+    latencyNs->setValue(250);
+    QSpinBox *tps = new QSpinBox(&dialog);
+    tps->setRange(1, 100000000);
+    tps->setValue(250000);
+    QSpinBox *burstSize = new QSpinBox(&dialog);
+    burstSize->setRange(1, 64);
+    burstSize->setValue(16);
+    QSpinBox *jitterNs = new QSpinBox(&dialog);
+    jitterNs->setRange(0, 1000000);
+    jitterNs->setValue(50);
+    QDoubleSpinBox *dropRate = new QDoubleSpinBox(&dialog);
+    dropRate->setRange(0.0, 1.0);
+    dropRate->setSingleStep(0.001);
+    dropRate->setValue(0.0);
+
+    form->addRow("Preset", preset);
+    form->addRow("Root ports", rootPorts);
+    form->addRow("Endpoints / root", endpointPerRoot);
+    form->addRow("Buses", buses);
+    form->addRow("Iterations", iterations);
+    form->addRow("Latency (ns)", latencyNs);
+    form->addRow("Tokens/sec", tps);
+    form->addRow("Burst size", burstSize);
+    form->addRow("Jitter (ns)", jitterNs);
+    form->addRow("Drop rate", dropRate);
+
+    QPushButton *enumerateButton = new QPushButton("Enumerate complete flow", &dialog);
+    QPushButton *measureButton = new QPushButton("Measure performance", &dialog);
+    auto *actionButtons = new QDialogButtonBox(Qt::Horizontal, &dialog);
+    actionButtons->addButton(enumerateButton, QDialogButtonBox::ActionRole);
+    actionButtons->addButton(measureButton, QDialogButtonBox::ActionRole);
+    auto *closeButton = new QPushButton("Close", &dialog);
+    actionButtons->addButton(closeButton, QDialogButtonBox::ActionRole);
+
+    mainLayout->addWidget(topologyView);
+    mainLayout->addLayout(form);
+    mainLayout->addWidget(actionButtons);
+
+    const auto applyPreset = [&](int index) {
+        switch (index) {
+            case 0:
+                rootPorts->setValue(4);
+                endpointPerRoot->setValue(2);
+                buses->setValue(4);
+                iterations->setValue(10);
+                latencyNs->setValue(250);
+                tps->setValue(250000);
+                burstSize->setValue(16);
+                jitterNs->setValue(50);
+                dropRate->setValue(0.0);
+                break;
+            case 1:
+                rootPorts->setValue(8);
+                endpointPerRoot->setValue(2);
+                buses->setValue(4);
+                iterations->setValue(20);
+                latencyNs->setValue(80);
+                tps->setValue(500000);
+                burstSize->setValue(32);
+                jitterNs->setValue(25);
+                dropRate->setValue(0.001);
+                break;
+            case 2:
+                rootPorts->setValue(8);
+                endpointPerRoot->setValue(4);
+                buses->setValue(4);
+                iterations->setValue(25);
+                latencyNs->setValue(120);
+                tps->setValue(1000000);
+                burstSize->setValue(64);
+                jitterNs->setValue(75);
+                dropRate->setValue(0.005);
+                break;
+            default:
+                break;
+        }
+    };
+    connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), applyPreset);
+    connect(enumerateButton, &QPushButton::clicked, [&]() {
+        QString profile = "gen8x16";
+        if (preset->currentText() == "AI cluster baseline") profile = "gen8x16";
+        else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
+        else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
+
+        runAiPerformanceScenario(profile,
+                                 rootPorts->value(),
+                                 endpointPerRoot->value(),
+                                 iterations->value(),
+                                 latencyNs->value(),
+                                 tps->value(),
+                                 burstSize->value(),
+                                 jitterNs->value(),
+                                 dropRate->value(),
+                                 buses->value());
+        statusLabel->setText(QString("AI emulator enumerated: %1 root ports | %2 endpoints/root | %3 buses")
+            .arg(rootPorts->value())
+            .arg(endpointPerRoot->value())
+            .arg(buses->value()));
+    });
+    connect(measureButton, &QPushButton::clicked, [&]() {
+        QString profile = "gen8x16";
+        if (preset->currentText() == "AI cluster baseline") profile = "gen8x16";
+        else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
+        else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
+
+        runAiPerformanceScenario(profile,
+                                 rootPorts->value(),
+                                 endpointPerRoot->value(),
+                                 iterations->value(),
+                                 latencyNs->value(),
+                                 tps->value(),
+                                 burstSize->value(),
+                                 jitterNs->value(),
+                                 dropRate->value(),
+                                 buses->value());
+    });
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::close);
+
+    applyPreset(preset->currentIndex());
+    dialog.exec();
 }
 
 void MainWindow::applyFilter()

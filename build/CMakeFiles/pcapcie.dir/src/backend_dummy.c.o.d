@@ -51,7 +51,10 @@ CMakeFiles/pcapcie.dir/src/backend_dummy.c.o: \
  /usr/include/x86_64-linux-gnu/bits/stdlib-float.h /usr/include/string.h \
  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
- /usr/include/strings.h /usr/include/ctype.h \
+ /usr/include/strings.h /usr/include/ctype.h /usr/include/time.h \
+ /usr/include/x86_64-linux-gnu/bits/time.h \
+ /usr/include/x86_64-linux-gnu/bits/types/struct_tm.h \
+ /usr/include/x86_64-linux-gnu/bits/types/struct_itimerspec.h \
  /home/khadem/libpcapcie/include/pcapcie/backend.h \
  /home/khadem/libpcapcie/include/pcapcie/tlp.h \
  /usr/lib/gcc/x86_64-linux-gnu/15/include/stdint.h /usr/include/stdint.h \

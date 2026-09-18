@@ -82,8 +82,9 @@ pcie_ctx_t *pcie_open(const char *backend_name)
     ctx->rx_addr_max = 0;
 
     // Select backend based on name
-    if (strcmp(backend_name, "dummy") == 0) {
-        ctx->backend = pcie_backend_dummy();
+    if (strcmp(backend_name, "dummy") == 0 || strcmp(backend_name, "golden") == 0 ||
+        strcmp(backend_name, "golden-standard") == 0 || strcmp(backend_name, "golden_standard") == 0) {
+        ctx->backend = pcie_backend_golden();
     } else if (strcmp(backend_name, "fpga") == 0) {
         ctx->backend = pcie_backend_fpga();
     } else if (strcmp(backend_name, "armds") == 0) {
@@ -93,7 +94,7 @@ pcie_ctx_t *pcie_open(const char *backend_name)
     } else if (strcmp(backend_name, "pci") == 0) {
         ctx->backend = pcie_backend_pci();
     } else {
-        pcie_log(PCIE_LOG_ERROR, "Unknown backend '%s'. Supported: dummy, fpga, armds, xgig, pci", backend_name);
+        pcie_log(PCIE_LOG_ERROR, "Unknown backend '%s'. Supported: golden, dummy, fpga, armds, xgig, pci", backend_name);
         free(ctx);
         return NULL;
     }

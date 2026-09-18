@@ -187,13 +187,28 @@ real hardware. This is useful when you want to exercise the same tool chain on a
 Gen 5 x1, Gen 6 x4, Gen 7 x8, or Gen 8 x16 scenario before plugging into a real
 endpoint.
 
-Examples:
+It also supports a flexible user-defined scenario string for performance and
+latency modeling, for example:
 
 ```bash
+PCIE_DUMMY_SCENARIO='gen8x16,latency=250ns,tps=250000,burst=16,jitter=50ns' ./build/pci_link_status dummy
 PCIE_DUMMY_PROFILE=gen5x1 ./build/pci_link_status dummy
 PCIE_DUMMY_PROFILE=gen6x4 ./build/pci_link_check dummy 6 4
 PCIE_DUMMY_PROFILE=gen8x16 ./build/pci_link_matrix dummy csv
 ```
+
+Supported custom parameters include:
+
+- `profile=gen8x16`
+- `latency=250ns` or `latency_ns=250000`
+- `tps=250000` or `tokens_per_second=250000`
+- `burst=16` or `burst_size=16`
+- `jitter=50ns`
+- `drop_rate=0.01`
+
+These values shape the dummy backend's virtual timing model so you can emulate a
+realistic PCIe workload profile for bring-up, capacity studies, or synthetic
+performance testing.
 
 You can also provide a profile directly to the matrix report app:
 

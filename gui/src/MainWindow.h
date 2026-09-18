@@ -12,9 +12,16 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QTextBrowser>
 #include <QTextEdit>
 #include <QSplitter>
 #include <QTreeWidget>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QElapsedTimer>
 
 class MainWindow : public QMainWindow
 {
@@ -28,6 +35,7 @@ public:
 private slots:
     void openTrace();
     void enumeratePciDevice();
+    void openAiPerfDialog();
     void applyFilter();
     void showPacketDetails();
     void updateSummaryStats();
@@ -45,9 +53,11 @@ private:
     QComboBox *directionFilter;
     QComboBox *backendFilter;
     QLineEdit *deviceIdBox;
+    QLineEdit *scenarioBox;
     QLineEdit *searchBox;
     QPushButton *openButton;
     QPushButton *enumerateButton;
+    QPushButton *aiPerfButton;
     QPushButton *themeButton;
     QLabel *statusLabel;
     QLabel *totalLabel;
@@ -57,4 +67,14 @@ private:
     bool darkMode;
     void applyTheme();
     void colorRows();
+    void runAiPerformanceScenario(const QString &profile,
+                                 int rootPorts,
+                                 int endpointsPerRoot,
+                                 int iterations,
+                                 int latencyNs,
+                                 int tps,
+                                 int burstSize,
+                                 int jitterNs,
+                                 double dropRate,
+                                 int busCount);
 };
