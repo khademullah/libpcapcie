@@ -71,6 +71,36 @@ QString formatHexDump(const QString &payload)
     return lines.join("\n");
 }
 
+QString pciVendorName(uint16_t vendorId)
+{
+    switch (vendorId) {
+        case 0x10EC: return "Realtek";
+        case 0x8086: return "Intel";
+        case 0x14E4: return "Broadcom";
+        case 0x1AF4: return "Red Hat, Inc.";
+        case 0x10DE: return "NVIDIA";
+        case 0x10B5: return "PLX";
+        default: return "Unknown vendor";
+    }
+}
+
+QString pciClassName(uint32_t classCode)
+{
+    switch ((classCode >> 8) & 0xFFFFFF) {
+        case 0x020000: return "Ethernet controller";
+        case 0x010000: return "SCSI controller";
+        case 0x0C0300: return "USB controller";
+        case 0x060000: return "Bridge device";
+        case 0x030000: return "VGA compatible controller";
+        default: return "Unknown class";
+    }
+}
+
+QString makeHexLabel(uint32_t value, int width)
+{
+    return QString("0x%1").arg(value, width, 16, QLatin1Char('0')).toUpper();
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -907,26 +937,44 @@ void MainWindow::showPacketDetails()
 
             switch (static_cast<int>(regAddr)) {
                 case 0x00:
-                    new QTreeWidgetItem(pciRoot, {"Vendor ID", QString("0x%1").arg(static_cast<uint16_t>(regValue & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
-                    new QTreeWidgetItem(pciRoot, {"Device ID", QString("0x%1").arg(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Vendor ID", makeHexLabel(static_cast<uint16_t>(regValue & 0xFFFF), 4)});
+                    new QTreeWidgetItem(pciRoot, {"Vendor name", pciVendorName(static_cast<uint16_t>(regValue & 0xFFFF))});
+                    new QTreeWidgetItem(pciRoot, {"Device ID", makeHexLabel(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4)});
                     break;
                 case 0x04:
-                    new QTreeWidgetItem(pciRoot, {"Command", QString("0x%1").arg(static_cast<uint16_t>(regValue & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
-                    new QTreeWidgetItem(pciRoot, {"Status", QString("0x%1").arg(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Command", makeHexLabel(static_cast<uint16_t>(regValue & 0xFFFF), 4)});
+                    new QTreeWidgetItem(pciRoot, {"Status", makeHexLabel(static_cast<uint16_t>((regValue >> 16) & 0xFFFF), 4)});
                     break;
                 case 0x08:
-                    new QTreeWidgetItem(pciRoot, {"Revision ID", QString("0x%1").arg(static_cast<uint8_t>(regValue & 0xFF), 2, 16, QLatin1Char('0')).toUpper()});
-                    new QTreeWidgetItem(pciRoot, {"Class code", QString("0x%1").arg(static_cast<uint32_t>((regValue >> 8) & 0xFFFFFF), 6, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Revision ID", makeHexLabel(static_cast<uint8_t>(regValue & 0xFF), 2)});
+                    new QTreeWidgetItem(pciRoot, {"Class code", makeHexLabel(static_cast<uint32_t>((regValue >> 8) & 0xFFFFFF), 6)});
+                    new QTreeWidgetItem(pciRoot, {"Class name", pciClassName(static_cast<uint32_t>((regValue >> 8) & 0xFFFFFF))});
                     break;
                 case 0x10:
                 case 0x14:
                 case 0x18:
                 case 0x1C:
-                    new QTreeWidgetItem(pciRoot, {"BAR", QString("0x%1").arg(regValue, 8, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"BAR", makeHexLabel(regValue, 8)});
                     break;
                 default:
-                    new QTreeWidgetItem(pciRoot, {"Raw register", QString("0x%1").arg(regValue, 8, 16, QLatin1Char('0')).toUpper()});
+                    new QTreeWidgetItem(pciRoot, {"Raw register", makeHexLabel(regValue, 8)});
                     break;
+            }
+
+            auto *deviceSummary = new QTreeWidgetItem(decodeTree, {"PCI device summary", ""});
+            const uint16_t vendorId = (regAddr == 0x00) ? static_cast<uint16_t>(regValue & 0xFFFF) : 0;
+            const uint16_t deviceId = (regAddr == 0x00) ? static_cast<uint16_t>((regValue >> 16) & 0xFFFF) : 0;
+            const uint32_t classCode = (regAddr == 0x08) ? static_cast<uint32_t>((regValue >> 8) & 0xFFFFFF) : 0;
+
+            if (vendorId != 0) {
+                new QTreeWidgetItem(deviceSummary, {"Vendor", QString("%1 (%2)").arg(pciVendorName(vendorId)).arg(makeHexLabel(vendorId, 4))});
+                new QTreeWidgetItem(deviceSummary, {"Device", makeHexLabel(deviceId, 4)});
+            }
+            if (classCode != 0) {
+                new QTreeWidgetItem(deviceSummary, {"Class", QString("%1 (%2)").arg(pciClassName(classCode)).arg(makeHexLabel(classCode, 6))});
+            }
+            if (regAddr == 0x10 || regAddr == 0x14 || regAddr == 0x18 || regAddr == 0x1C) {
+                new QTreeWidgetItem(deviceSummary, {"BAR", makeHexLabel(regValue, 8)});
             }
         }
     }
