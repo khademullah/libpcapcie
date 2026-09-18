@@ -104,6 +104,111 @@ QString formatHexDump(const QString &payload)
     return lines.join("\n");
 }
 
+void summarizeTraceFile(const QString &path,
+                        int *totalEntries,
+                        int *txCount,
+                        int *rxCount,
+                        double *firstTs,
+                        double *lastTs)
+{
+    if (totalEntries) *totalEntries = 0;
+    if (txCount) *txCount = 0;
+    if (rxCount) *rxCount = 0;
+    if (firstTs) *firstTs = 0.0;
+    if (lastTs) *lastTs = 0.0;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+
+    QTextStream stream(&file);
+    QString line;
+    int total = 0;
+    int tx = 0;
+    int rx = 0;
+    double first = 0.0;
+    double last = 0.0;
+    bool firstSet = false;
+
+    while (!stream.atEnd()) {
+        line = stream.readLine().trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+
+        QString ts, dir, type, requester, completer, tag, length, addr, payload;
+        if (!parseRawTraceLine(line, &ts, &dir, &type, &requester, &completer, &tag, &length, &addr, &payload)) {
+            continue;
+        }
+
+        const double tsValue = ts.toDouble();
+        if (!firstSet || tsValue < first) {
+            first = tsValue;
+        }
+        if (!firstSet || tsValue > last) {
+            last = tsValue;
+        }
+        firstSet = true;
+
+        ++total;
+        if (dir == "TX") {
+            ++tx;
+        } else if (dir == "RX") {
+            ++rx;
+        }
+    }
+
+    file.close();
+
+    if (totalEntries) *totalEntries = total;
+    if (txCount) *txCount = tx;
+    if (rxCount) *rxCount = rx;
+    if (firstTs) *firstTs = first;
+    if (lastTs) *lastTs = last;
+}
+
+void summarizeModelRows(QStandardItemModel *model,
+                        int *totalEntries,
+                        int *txCount,
+                        int *rxCount,
+                        double *firstTs,
+                        double *lastTs)
+{
+    if (!model) {
+        return;
+    }
+
+    if (totalEntries) *totalEntries = model->rowCount();
+    int tx = 0;
+    int rx = 0;
+    double first = 0.0;
+    double last = 0.0;
+    bool firstSet = false;
+
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const QString direction = model->index(row, 1).data().toString();
+        if (direction == "TX") {
+            ++tx;
+        } else if (direction == "RX") {
+            ++rx;
+        }
+
+        const QString tsText = model->index(row, 0).data().toString();
+        const double tsValue = tsText.toDouble();
+        if (!tsText.isEmpty()) {
+            if (!firstSet || tsValue < first) first = tsValue;
+            if (!firstSet || tsValue > last) last = tsValue;
+            firstSet = true;
+        }
+    }
+
+    if (txCount) *txCount = tx;
+    if (rxCount) *rxCount = rx;
+    if (firstTs) *firstTs = first;
+    if (lastTs) *lastTs = last;
+}
+
 QString pciVendorName(uint16_t vendorId)
 {
     switch (vendorId) {
@@ -249,6 +354,7 @@ QString buildAiTopologyHtml()
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
+    , aiEmulatorDialog(nullptr)
     , liveTraceTimer(nullptr)
     , liveTraceProcess(nullptr)
     , suppressAiRunnerExitWarning(false)
@@ -1149,7 +1255,6 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
 
     const QString workDir = QFileInfo(resolvedScript).absolutePath() + "/..";
     const QString traceLog = QDir(workDir).filePath("zephyr_ai_topology_trace.log");
-    model->removeRows(0, model->rowCount());
     liveTraceSeen.clear();
     liveTracePath = traceLog;
 
@@ -1195,35 +1300,18 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
                                          "Check the generated trace log and the runner output.");
                     return;
                 }
-                if (QFileInfo::exists(traceLog)) {
-                    loadTraceFile(traceLog);
-                    const int totalEntries = model->rowCount();
-                    double firstTs = 0.0;
-                    double lastTs = 0.0;
-                    for (int row = 0; row < totalEntries; ++row) {
-                        const QString tsText = model->index(row, 0).data().toString();
-                        const bool ok = !tsText.isEmpty();
-                        if (!ok) {
-                            continue;
-                        }
-                        const double tsValue = tsText.toDouble();
-                        if (row == 0 || tsValue < firstTs) {
-                            firstTs = tsValue;
-                        }
-                        if (row == 0 || tsValue > lastTs) {
-                            lastTs = tsValue;
-                        }
-                    }
-
+                if (QFileInfo::exists(traceLog) || model->rowCount() > 0) {
+                    int totalEntries = 0;
                     int txCount = 0;
                     int rxCount = 0;
-                    for (int row = 0; row < totalEntries; ++row) {
-                        const QString direction = model->index(row, 1).data().toString();
-                        if (direction == "TX") {
-                            ++txCount;
-                        } else if (direction == "RX") {
-                            ++rxCount;
-                        }
+                    double firstTs = 0.0;
+                    double lastTs = 0.0;
+
+                    if (QFileInfo::exists(traceLog)) {
+                        summarizeTraceFile(traceLog, &totalEntries, &txCount, &rxCount, &firstTs, &lastTs);
+                    }
+                    if (totalEntries == 0 && model->rowCount() > 0) {
+                        summarizeModelRows(model, &totalEntries, &txCount, &rxCount, &firstTs, &lastTs);
                     }
 
                     const double durationSec = (lastTs > firstTs) ? ((lastTs - firstTs) / 1000.0) : 1.0;
@@ -1239,20 +1327,20 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
                         .arg(observedUtilization, 0, 'f', 1));
 
                     QMessageBox::information(this, "AI PCIe performance summary",
-                                             QString("Profile: %1\n" 
-                                                     "Root ports: %2\n" 
-                                                     "Endpoints/root: %3\n" 
-                                                     "Iterations: %4\n" 
-                                                     "Target latency: %5 ns\n" 
-                                                     "Target token rate: %6 tps\n" 
-                                                     "Target burst: %7\n" 
-                                                     "Target jitter: %8 ns\n" 
-                                                     "Drop rate: %9\n\n" 
-                                                     "Observed entries: %10\n" 
-                                                     "TX: %11\n" 
-                                                     "RX: %12\n" 
-                                                     "Observed throughput: %13 ops/s\n" 
-                                                     "Observed latency: %14 us\n" 
+                                             QString("Profile: %1\n"
+                                                     "Root ports: %2\n"
+                                                     "Endpoints/root: %3\n"
+                                                     "Iterations: %4\n"
+                                                     "Target latency: %5 ns\n"
+                                                     "Target token rate: %6 tps\n"
+                                                     "Target burst: %7\n"
+                                                     "Target jitter: %8 ns\n"
+                                                     "Drop rate: %9\n\n"
+                                                     "Observed entries: %10\n"
+                                                     "TX: %11\n"
+                                                     "RX: %12\n"
+                                                     "Observed throughput: %13 ops/s\n"
+                                                     "Observed latency: %14 us\n"
                                                      "Utilization: %15%")
                                              .arg(profile)
                                              .arg(rootPorts)
@@ -1288,211 +1376,221 @@ void MainWindow::runAiPerformanceScenario(const QString &profile,
 
 void MainWindow::openAiPerfDialog()
 {
-    QDialog dialog(this);
-    dialog.setWindowTitle("AI PCIe Emulator");
-    dialog.resize(980, 760);
+    if (!aiEmulatorDialog) {
+        aiEmulatorDialog = new QDialog(this);
+        aiEmulatorDialog->setWindowTitle("AI PCIe Emulator");
+        aiEmulatorDialog->resize(980, 760);
+        aiEmulatorDialog->setAttribute(Qt::WA_DeleteOnClose, false);
+        aiEmulatorDialog->setModal(false);
 
-    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+        QVBoxLayout *mainLayout = new QVBoxLayout(aiEmulatorDialog);
 
-    QTextBrowser *topologyView = new QTextBrowser(&dialog);
-    topologyView->setHtml(buildAiTopologyHtml());
-    topologyView->setOpenExternalLinks(false);
-    topologyView->setReadOnly(true);
-    topologyView->setMinimumHeight(360);
+        QTextBrowser *topologyView = new QTextBrowser(aiEmulatorDialog);
+        topologyView->setHtml(buildAiTopologyHtml());
+        topologyView->setOpenExternalLinks(false);
+        topologyView->setReadOnly(true);
+        topologyView->setMinimumHeight(360);
 
-    QFormLayout *form = new QFormLayout();
-    QComboBox *preset = new QComboBox(&dialog);
-    preset->addItem("AI golden topology");
-    preset->addItem("Low latency mesh");
-    preset->addItem("High throughput fabric");
-    preset->addItem("Custom");
-    preset->setCurrentText("AI golden topology");
+        QFormLayout *form = new QFormLayout();
+        QComboBox *preset = new QComboBox(aiEmulatorDialog);
+        preset->addItem("AI golden topology");
+        preset->addItem("Low latency mesh");
+        preset->addItem("High throughput fabric");
+        preset->addItem("Custom");
+        preset->setCurrentText("AI golden topology");
 
-    QSpinBox *rootPorts = new QSpinBox(&dialog);
-    rootPorts->setRange(1, 16);
-    rootPorts->setValue(4);
-    QSpinBox *endpointPerRoot = new QSpinBox(&dialog);
-    endpointPerRoot->setRange(1, 16);
-    endpointPerRoot->setValue(2);
-    QSpinBox *buses = new QSpinBox(&dialog);
-    buses->setRange(1, 8);
-    buses->setValue(4);
-    QSpinBox *iterations = new QSpinBox(&dialog);
-    iterations->setRange(1, 1000);
-    iterations->setValue(10);
-    QSpinBox *latencyNs = new QSpinBox(&dialog);
-    latencyNs->setRange(0, 1000000);
-    latencyNs->setValue(250);
-    QSpinBox *tps = new QSpinBox(&dialog);
-    tps->setRange(1, 100000000);
-    tps->setValue(250000);
-    QSpinBox *burstSize = new QSpinBox(&dialog);
-    burstSize->setRange(1, 64);
-    burstSize->setValue(16);
-    QSpinBox *jitterNs = new QSpinBox(&dialog);
-    jitterNs->setRange(0, 1000000);
-    jitterNs->setValue(50);
-    QDoubleSpinBox *dropRate = new QDoubleSpinBox(&dialog);
-    dropRate->setRange(0.0, 1.0);
-    dropRate->setSingleStep(0.001);
-    dropRate->setValue(0.0);
+        QSpinBox *rootPorts = new QSpinBox(aiEmulatorDialog);
+        rootPorts->setRange(1, 16);
+        rootPorts->setValue(4);
+        QSpinBox *endpointPerRoot = new QSpinBox(aiEmulatorDialog);
+        endpointPerRoot->setRange(1, 16);
+        endpointPerRoot->setValue(2);
+        QSpinBox *buses = new QSpinBox(aiEmulatorDialog);
+        buses->setRange(1, 8);
+        buses->setValue(4);
+        QSpinBox *iterations = new QSpinBox(aiEmulatorDialog);
+        iterations->setRange(1, 1000);
+        iterations->setValue(10);
+        QSpinBox *latencyNs = new QSpinBox(aiEmulatorDialog);
+        latencyNs->setRange(0, 1000000);
+        latencyNs->setValue(250);
+        QSpinBox *tps = new QSpinBox(aiEmulatorDialog);
+        tps->setRange(1, 100000000);
+        tps->setValue(250000);
+        QSpinBox *burstSize = new QSpinBox(aiEmulatorDialog);
+        burstSize->setRange(1, 64);
+        burstSize->setValue(16);
+        QSpinBox *jitterNs = new QSpinBox(aiEmulatorDialog);
+        jitterNs->setRange(0, 1000000);
+        jitterNs->setValue(50);
+        QDoubleSpinBox *dropRate = new QDoubleSpinBox(aiEmulatorDialog);
+        dropRate->setRange(0.0, 1.0);
+        dropRate->setSingleStep(0.001);
+        dropRate->setValue(0.0);
 
-    form->addRow("Preset", preset);
-    form->addRow("Root ports", rootPorts);
-    form->addRow("Endpoints / root", endpointPerRoot);
-    form->addRow("Buses", buses);
-    form->addRow("Iterations", iterations);
-    form->addRow("Latency (ns)", latencyNs);
-    form->addRow("Tokens/sec", tps);
-    form->addRow("Burst size", burstSize);
-    form->addRow("Jitter (ns)", jitterNs);
-    form->addRow("Drop rate", dropRate);
+        form->addRow("Preset", preset);
+        form->addRow("Root ports", rootPorts);
+        form->addRow("Endpoints / root", endpointPerRoot);
+        form->addRow("Buses", buses);
+        form->addRow("Iterations", iterations);
+        form->addRow("Latency (ns)", latencyNs);
+        form->addRow("Tokens/sec", tps);
+        form->addRow("Burst size", burstSize);
+        form->addRow("Jitter (ns)", jitterNs);
+        form->addRow("Drop rate", dropRate);
 
-    QPushButton *enumerateButton = new QPushButton("Enumerate complete flow", &dialog);
-    QPushButton *measureButton = new QPushButton("Measure performance", &dialog);
-    auto *actionButtons = new QDialogButtonBox(Qt::Horizontal, &dialog);
-    actionButtons->addButton(enumerateButton, QDialogButtonBox::ActionRole);
-    actionButtons->addButton(measureButton, QDialogButtonBox::ActionRole);
-    auto *closeButton = new QPushButton("Close", &dialog);
-    actionButtons->addButton(closeButton, QDialogButtonBox::ActionRole);
+        QPushButton *enumerateButton = new QPushButton("Enumerate complete flow", aiEmulatorDialog);
+        QPushButton *measureButton = new QPushButton("Measure performance", aiEmulatorDialog);
+        auto *actionButtons = new QDialogButtonBox(Qt::Horizontal, aiEmulatorDialog);
+        actionButtons->addButton(enumerateButton, QDialogButtonBox::ActionRole);
+        actionButtons->addButton(measureButton, QDialogButtonBox::ActionRole);
+        auto *closeButton = new QPushButton("Close", aiEmulatorDialog);
+        actionButtons->addButton(closeButton, QDialogButtonBox::ActionRole);
 
-    mainLayout->addWidget(topologyView);
-    mainLayout->addLayout(form);
-    mainLayout->addWidget(actionButtons);
+        mainLayout->addWidget(topologyView);
+        mainLayout->addLayout(form);
+        mainLayout->addWidget(actionButtons);
 
-    const auto applyPreset = [&](int index) {
-        switch (index) {
-            case 0:
-                rootPorts->setValue(4);
-                endpointPerRoot->setValue(2);
-                buses->setValue(4);
-                iterations->setValue(20);
-                latencyNs->setValue(80);
-                tps->setValue(500000);
-                burstSize->setValue(32);
-                jitterNs->setValue(25);
-                dropRate->setValue(0.0);
-                break;
-            case 1:
-                rootPorts->setValue(8);
-                endpointPerRoot->setValue(2);
-                buses->setValue(4);
-                iterations->setValue(20);
-                latencyNs->setValue(80);
-                tps->setValue(500000);
-                burstSize->setValue(32);
-                jitterNs->setValue(25);
-                dropRate->setValue(0.001);
-                break;
-            case 2:
-                rootPorts->setValue(8);
-                endpointPerRoot->setValue(4);
-                buses->setValue(4);
-                iterations->setValue(25);
-                latencyNs->setValue(120);
-                tps->setValue(1000000);
-                burstSize->setValue(64);
-                jitterNs->setValue(75);
-                dropRate->setValue(0.005);
-                break;
-            default:
-                break;
-        }
-    };
-    connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), applyPreset);
-    connect(enumerateButton, &QPushButton::clicked, [&]() {
-        const QStringList candidateScripts = {
-            QDir::cleanPath(QDir::currentPath() + "/scripts/run_zephyr_ai_topology.sh"),
-            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../scripts/run_zephyr_ai_topology.sh"),
-            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../scripts/run_zephyr_ai_topology.sh"),
-            QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../../scripts/run_zephyr_ai_topology.sh")
-        };
-
-        QString resolvedScript;
-        for (const QString &candidate : candidateScripts) {
-            if (QFileInfo::exists(candidate)) {
-                resolvedScript = candidate;
-                break;
+        const auto applyPreset = [&](int index) {
+            switch (index) {
+                case 0:
+                    rootPorts->setValue(4);
+                    endpointPerRoot->setValue(2);
+                    buses->setValue(4);
+                    iterations->setValue(20);
+                    latencyNs->setValue(80);
+                    tps->setValue(500000);
+                    burstSize->setValue(32);
+                    jitterNs->setValue(25);
+                    dropRate->setValue(0.0);
+                    break;
+                case 1:
+                    rootPorts->setValue(8);
+                    endpointPerRoot->setValue(2);
+                    buses->setValue(4);
+                    iterations->setValue(20);
+                    latencyNs->setValue(80);
+                    tps->setValue(500000);
+                    burstSize->setValue(32);
+                    jitterNs->setValue(25);
+                    dropRate->setValue(0.001);
+                    break;
+                case 2:
+                    rootPorts->setValue(8);
+                    endpointPerRoot->setValue(4);
+                    buses->setValue(4);
+                    iterations->setValue(25);
+                    latencyNs->setValue(120);
+                    tps->setValue(1000000);
+                    burstSize->setValue(64);
+                    jitterNs->setValue(75);
+                    dropRate->setValue(0.005);
+                    break;
+                default:
+                    break;
             }
-        }
+        };
+        connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), applyPreset);
+        connect(enumerateButton, &QPushButton::clicked, this, [this, resolved = QString(), rootPorts, endpointPerRoot, buses, iterations, latencyNs, tps, burstSize, jitterNs, dropRate, preset]() {
+            const QStringList candidateScripts = {
+                QDir::cleanPath(QDir::currentPath() + "/scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../scripts/run_zephyr_ai_topology.sh"),
+                QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../../../scripts/run_zephyr_ai_topology.sh")
+            };
 
-        if (resolvedScript.isEmpty()) {
-            QMessageBox::warning(this, "Zephyr topology runner missing",
-                                 "Unable to locate scripts/run_zephyr_ai_topology.sh. "
-                                 "Please verify the script exists in the repository.");
-            return;
-        }
+            QString resolvedScript;
+            for (const QString &candidate : candidateScripts) {
+                if (QFileInfo::exists(candidate)) {
+                    resolvedScript = candidate;
+                    break;
+                }
+            }
 
-        const QString workingDir = QFileInfo(resolvedScript).absolutePath() + "/..";
-        const QString traceLog = QDir(workingDir).filePath("zephyr_ai_topology_trace.log");
-        statusLabel->setText("Launching Zephyr AI topology enumeration...");
+            if (resolvedScript.isEmpty()) {
+                QMessageBox::warning(this, "Zephyr topology runner missing",
+                                     "Unable to locate scripts/run_zephyr_ai_topology.sh. "
+                                     "Please verify the script exists in the repository.");
+                return;
+            }
 
-        model->removeRows(0, model->rowCount());
-        liveTraceSeen.clear();
-        liveTracePath = traceLog;
-        if (liveTraceTimer) {
-            liveTraceTimer->stop();
-            delete liveTraceTimer;
-        }
-        liveTraceTimer = new QTimer(this);
-        connect(liveTraceTimer, &QTimer::timeout, this, &MainWindow::pollLiveTrace);
-        liveTraceTimer->start(500);
+            const QString workingDir = QFileInfo(resolvedScript).absolutePath() + "/..";
+            const QString traceLog = QDir(workingDir).filePath("zephyr_ai_topology_trace.log");
+            statusLabel->setText("Launching Zephyr AI topology enumeration...");
 
-        if (liveTraceProcess) {
-            suppressAiRunnerExitWarning = true;
-            stopProcessAndDelete(liveTraceProcess);
-            liveTraceProcess = nullptr;
-        }
-        liveTraceProcess = new QProcess(this);
-        liveTraceProcess->setWorkingDirectory(workingDir);
-        liveTraceProcess->setProgram("bash");
-        liveTraceProcess->setArguments({"-lc", resolvedScript});
+            model->removeRows(0, model->rowCount());
+            liveTraceSeen.clear();
+            liveTracePath = traceLog;
+            if (liveTraceTimer) {
+                liveTraceTimer->stop();
+                delete liveTraceTimer;
+            }
+            liveTraceTimer = new QTimer(this);
+            connect(liveTraceTimer, &QTimer::timeout, this, &MainWindow::pollLiveTrace);
+            liveTraceTimer->start(500);
 
-        connect(liveTraceProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, [this, traceLog](int exitCode, QProcess::ExitStatus status) {
-                    if (suppressAiRunnerExitWarning) {
-                        suppressAiRunnerExitWarning = false;
-                        return;
-                    }
-                    if (status == QProcess::CrashExit || exitCode != 0) {
-                        QMessageBox::warning(this, "Zephyr topology enumeration failed",
-                                             "The Zephyr AI topology runner exited with an error. "
-                                             "Check the terminal output or the generated trace log.");
-                        return;
-                    }
-                    if (QFileInfo::exists(traceLog)) {
-                        if (model->rowCount() == 0) {
-                            loadTraceFile(traceLog);
+            if (liveTraceProcess) {
+                suppressAiRunnerExitWarning = true;
+                stopProcessAndDelete(liveTraceProcess);
+                liveTraceProcess = nullptr;
+            }
+            liveTraceProcess = new QProcess(this);
+            liveTraceProcess->setWorkingDirectory(workingDir);
+            liveTraceProcess->setProgram("bash");
+            liveTraceProcess->setArguments({"-lc", resolvedScript});
+
+            connect(liveTraceProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                    this, [this, traceLog](int exitCode, QProcess::ExitStatus status) {
+                        if (suppressAiRunnerExitWarning) {
+                            suppressAiRunnerExitWarning = false;
+                            return;
                         }
-                        statusLabel->setText(QString("Loaded %1 trace entries from %2").arg(model->rowCount()).arg(traceLog));
-                    }
-                });
+                        if (status == QProcess::CrashExit || exitCode != 0) {
+                            QMessageBox::warning(this, "Zephyr topology enumeration failed",
+                                                 "The Zephyr AI topology runner exited with an error. "
+                                                 "Check the terminal output or the generated trace log.");
+                            return;
+                        }
+                        if (QFileInfo::exists(traceLog)) {
+                            if (model->rowCount() == 0) {
+                                loadTraceFile(traceLog);
+                            }
+                            statusLabel->setText(QString("Loaded %1 trace entries from %2").arg(model->rowCount()).arg(traceLog));
+                        }
+                    });
 
-        liveTraceProcess->start();
-        QMessageBox::information(this, "AI PCIe enumeration started",
-                                 "The Zephyr AI topology runner is running in the background and the live trace is being appended to pcieshark in real time.");
-    });
-    connect(measureButton, &QPushButton::clicked, [&]() {
-        QString profile = "gen8x16";
-        if (preset->currentText() == "AI golden topology") profile = "gen8x16";
-        else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
-        else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
+            liveTraceProcess->start();
+            QMessageBox::information(this, "AI PCIe enumeration started",
+                                     "The Zephyr AI topology runner is running in the background and the live trace is being appended to pcieshark in real time.");
+        });
+        connect(measureButton, &QPushButton::clicked, this, [this, preset, rootPorts, endpointPerRoot, buses, iterations, latencyNs, tps, burstSize, jitterNs, dropRate]() {
+            QString profile = "gen8x16";
+            if (preset->currentText() == "AI golden topology") profile = "gen8x16";
+            else if (preset->currentText() == "Low latency mesh") profile = "gen7x8";
+            else if (preset->currentText() == "High throughput fabric") profile = "gen8x16";
 
-        runAiPerformanceScenario(profile,
-                                 rootPorts->value(),
-                                 endpointPerRoot->value(),
-                                 iterations->value(),
-                                 latencyNs->value(),
-                                 tps->value(),
-                                 burstSize->value(),
-                                 jitterNs->value(),
-                                 dropRate->value(),
-                                 buses->value());
-    });
-    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::close);
+            runAiPerformanceScenario(profile,
+                                     rootPorts->value(),
+                                     endpointPerRoot->value(),
+                                     iterations->value(),
+                                     latencyNs->value(),
+                                     tps->value(),
+                                     burstSize->value(),
+                                     jitterNs->value(),
+                                     dropRate->value(),
+                                     buses->value());
+        });
+        connect(closeButton, &QPushButton::clicked, aiEmulatorDialog, &QDialog::close);
+        connect(aiEmulatorDialog, &QDialog::finished, this, [this]() {
+            aiEmulatorDialog = nullptr;
+        });
 
-    applyPreset(preset->currentIndex());
-    dialog.exec();
+        applyPreset(preset->currentIndex());
+    }
+
+    aiEmulatorDialog->show();
+    aiEmulatorDialog->raise();
+    aiEmulatorDialog->activateWindow();
 }
 
 void MainWindow::applyFilter()

@@ -71,6 +71,7 @@ private:
     QLabel *txLabel;
     QLabel *rxLabel;
     QLabel *filteredLabel;
+    QDialog *aiEmulatorDialog;
     QTimer *liveTraceTimer;
     QProcess *liveTraceProcess;
     QString liveTracePath;
