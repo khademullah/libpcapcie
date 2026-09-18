@@ -27,6 +27,7 @@ public:
 
 private slots:
     void openTrace();
+    void enumeratePciDevice();
     void applyFilter();
     void showPacketDetails();
     void updateSummaryStats();
@@ -44,6 +45,7 @@ private:
     QComboBox *directionFilter;
     QLineEdit *searchBox;
     QPushButton *openButton;
+    QPushButton *enumerateButton;
     QPushButton *themeButton;
     QLabel *statusLabel;
     QLabel *totalLabel;

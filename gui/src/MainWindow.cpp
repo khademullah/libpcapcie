@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "pcapcie/pcapcie.h"
 #include "pcapcie/tlp.h"
 
 #include <QFile>
@@ -7,6 +8,7 @@
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
 #include <QDebug>
+#include <QDateTime>
 
 namespace {
 
@@ -81,6 +83,7 @@ MainWindow::MainWindow(QWidget *parent)
     darkMode = false;
 
     openButton = new QPushButton("Open trace", this);
+    enumerateButton = new QPushButton("Enumerate PCI", this);
     themeButton = new QPushButton("Dark", this);
     typeFilter = new QComboBox(this);
     directionFilter = new QComboBox(this);
@@ -105,6 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
     searchBox->setPlaceholderText("Filter by requester ID or address");
 
     toolbar->addWidget(openButton);
+    toolbar->addWidget(enumerateButton);
     toolbar->addWidget(themeButton);
     toolbar->addWidget(new QLabel("Type:", this));
     toolbar->addWidget(typeFilter);
@@ -201,6 +205,7 @@ MainWindow::MainWindow(QWidget *parent)
     filteredLabel->setObjectName("summaryCard");
 
     connect(openButton, &QPushButton::clicked, this, &MainWindow::openTrace);
+    connect(enumerateButton, &QPushButton::clicked, this, &MainWindow::enumeratePciDevice);
     connect(themeButton, &QPushButton::clicked, this, [this]() {
         darkMode = !darkMode;
         applyTheme();
@@ -578,6 +583,92 @@ void MainWindow::loadCsv(const QString &path)
     }
     updateSummaryStats();
     statusLabel->setText(QString("Loaded %1 TLP entries from %2").arg(row).arg(path));
+}
+
+void MainWindow::enumeratePciDevice()
+{
+    pcie_ctx_t *ctx = pcie_open("pci");
+    if (!ctx) {
+        QMessageBox::warning(this, "PCI enumeration failed",
+                             "Unable to open the PCI backend. Make sure this machine exposes a PCIe device and the process has permission to access /sys/bus/pci/devices.");
+        return;
+    }
+
+    pcie_device_info_t deviceInfo = {};
+    pcie_link_status_t linkStatus = {};
+    int rc = pcie_get_device_info(ctx, &deviceInfo);
+    if (rc != 0) {
+        QMessageBox::warning(this, "PCI enumeration failed",
+                             "The PCI backend is available but the device could not be queried.");
+        pcie_close(ctx);
+        return;
+    }
+
+    pcie_get_link_status(ctx, &linkStatus);
+
+    model->removeRows(0, model->rowCount());
+
+    static const uint64_t enumAddrs[] = {0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c};
+    for (size_t i = 0; i < sizeof(enumAddrs) / sizeof(enumAddrs[0]); ++i) {
+        pcie_tlp_t cfgRead = pcie_tlp_cfg_read(static_cast<uint32_t>(enumAddrs[i]));
+        uint8_t payload[4] = {0};
+        cfgRead.requester_id = 0x0001;
+        cfgRead.tag = 0x0F;
+        cfgRead.length = 4;
+        cfgRead.mem.data = payload;
+
+        const int result = pcie_send(ctx, &cfgRead);
+        if (result != 0) {
+            statusLabel->setText(QString("PCI enumeration failed at offset 0x%1").arg(enumAddrs[i], 0, 16));
+            pcie_close(ctx);
+            return;
+        }
+
+        QString payloadHex;
+        for (int j = 0; j < cfgRead.length; ++j) {
+            payloadHex += QString("%1").arg(payload[j], 2, 16, QLatin1Char('0'));
+            if (j + 1 < cfgRead.length) {
+                payloadHex += " ";
+            }
+        }
+
+        const QString ts = QString::number(QDateTime::currentMSecsSinceEpoch());
+        const QList<QStandardItem *> items = {
+            new QStandardItem(ts),
+            new QStandardItem("TX"),
+            new QStandardItem("CfgRd"),
+            new QStandardItem("1"),
+            new QStandardItem("0"),
+            new QStandardItem("15"),
+            new QStandardItem("4"),
+            new QStandardItem(QString("0x%1").arg(enumAddrs[i], 0, 16)),
+            new QStandardItem(payloadHex)
+        };
+
+        model->insertRow(static_cast<int>(i), items);
+    }
+
+    pcie_close(ctx);
+
+    applyFilter();
+    if (model->rowCount() > 0) {
+        tableView->selectRow(0);
+    }
+    updateSummaryStats();
+
+    const QString linkSpeedName = (linkStatus.negotiated_link_speed == PCIE_LINK_SPEED_UNKNOWN)
+        ? QStringLiteral("Unknown")
+        : QString::fromUtf8(pcie_link_speed_name(linkStatus.negotiated_link_speed));
+
+    const QString deviceSummary = QString("Vendor 0x%1 Device 0x%2 Class 0x%3 Rev 0x%4 | Link %5/%6 lanes")
+        .arg(deviceInfo.vendor_id, 4, 16, QLatin1Char('0'))
+        .arg(deviceInfo.device_id, 4, 16, QLatin1Char('0'))
+        .arg(deviceInfo.class_code, 6, 16, QLatin1Char('0'))
+        .arg(deviceInfo.revision_id, 2, 16, QLatin1Char('0'))
+        .arg(linkSpeedName)
+        .arg(linkStatus.negotiated_link_width);
+
+    statusLabel->setText(QString("Enumerated PCI device (%1)").arg(deviceSummary));
 }
 
 void MainWindow::applyFilter()
